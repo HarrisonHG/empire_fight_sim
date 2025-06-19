@@ -1,8 +1,28 @@
 {
-  "name": "Empire Fight Sim",
+  "name": "empire-fight-sim",
   "version": "0.1.0",
   "scripts": {
-    "start": "http-server . -p 8080"
+    "start": "http-server . -p 8080",
+    "dev": "vite",
+    "build": "vite build"
   },
-  "devDependencies": {}
+  "description": "A web-based fight simulator using empire larp fight rules",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HarrisonHG/empire_fight_sim.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/HarrisonHG/empire_fight_sim/issues"
+  },
+  "homepage": "https://github.com/HarrisonHG/empire_fight_sim#readme",
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
 }
