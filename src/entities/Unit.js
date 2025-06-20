@@ -26,6 +26,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.moveSpeed = speed || 200; // Default speed in pixels per second
     this.tryingToMove = false;
     this.acceleration = 800;
+    this.SLOW_MOVEMENT_DISTANCE = 50; // Distance at which to start slowing down
+    this.CLOSE_ENOUGH = 10 // How close do we need to be to stop moving?
 
     // Interaction
     scene.physics.add.existing(this);
@@ -35,46 +37,6 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     //this.body.setOffset((size/2)+5, (size/2)+5); // Center the circle
     this.body.setBounce(1);
     this.body.setCollideWorldBounds(true);
-  }
-
-  /**
-   * Set the colour of the unit.
-   * @param {string} colour - Hex colour code, e.g. '#FF0000'.
-   */
-  setColour(colour) {
-    this.colour = colour;
-    this.setTint(Phaser.Display.Color.HexStringToColor(colour).color);
-  }
-
-  moveTo(x, y) {
-    // Calculate speed
-    let currentSpeed = this.moveSpeed // Multipliers n shit to come.
-    this.turnToFace(x, y)
-    const angle = this.rotation; // same as what faceTowards set
-    this.body.setAcceleration(
-      Math.cos(angle) * this.acceleration,
-      Math.sin(angle) * this.acceleration
-    );
-    this.body.setMaxVelocity(currentSpeed, currentSpeed)
-
-    const v = this.body.velocity;
-    const speed = v.length();
-    if (speed > currentSpeed) {
-      const ratio = currentSpeed / speed;
-      this.body.setVelocity(v.x * ratio, v.y * ratio);
-    }
-
-    this.tryingToMove = true
-  }
-
-  /**
-   * Rotate the sprite to face a world coordinate.
-   * @param {number} targetX
-   * @param {number} targetY
-   */
-  turnToFace(targetX, targetY) {
-    const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
-    this.setRotation(angle);
   }
 
   /**
@@ -90,13 +52,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       this.moveTo(pointer.worldX, pointer.worldY)
     }
     else {
-      // Don't want to move? slow to a halt
-      this.body.setAcceleration(0, 0); // Stop accelerating
-      this.body.velocity.scale(0.8); // Drag not working :( here's a manual way to stop
-      if (this.body.speed < 20) {
-        this.body.setVelocity(0, 0);
-      }
-      this.tryingToMove = false;
+      this.standStill();
     }
 
     // No matter the desired movement, we need to check bounds
@@ -128,4 +84,72 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       this.body.setVelocityY(0);
     }
   }
+
+  /**
+   * Set the colour of the unit.
+   * @param {string} colour - Hex colour code, e.g. '#FF0000'.
+   */
+  setColour(colour) {
+    this.colour = colour;
+    this.setTint(Phaser.Display.Color.HexStringToColor(colour).color);
+  }
+
+  // --- MOVEMENT ---
+
+  /**
+   * Stop the unit from moving by slowing to a halt
+   * This is called when the unit is close enough to its target or when it should stop moving.
+   */
+  standStill() {
+    this.body.setAcceleration(0, 0); // Stop accelerating
+    this.body.velocity.scale(0.8); // Drag not working :( here's a manual way to stop
+    if (this.body.speed < this.CLOSE_ENOUGH) {
+      this.body.setVelocity(0, 0);
+    }
+    this.tryingToMove = false;
+  }
+
+  /**
+   * Move the unit towards a target coordinate.
+   * @param {number} x - The target x-coordinate.
+   * @param {number} y - The target y-coordinate.
+   */
+  moveTo(x, y) {
+    
+    // Calculate distance to target
+    const distance = Phaser.Math.Distance.Between(this.x, this.y, x, y);
+    if (distance < this.CLOSE_ENOUGH) {
+      this.standStill();
+      return; // We're close enough, no need to move
+    }
+
+    // Calculate max speed achievable
+    let currentSpeed = this.moveSpeed; // Multipliers n shit to come.
+
+    // We'll face the way we wish to move to.
+    this.turnToFace(x, y)
+    const angle = this.rotation;
+    this.body.setAcceleration(
+      Math.cos(angle) * this.acceleration,
+      Math.sin(angle) * this.acceleration
+    );
+
+    // This belongs here (and not in the constructor) due to the constant changing
+    // of speed from scene conditions
+    const direction = new Phaser.Math.Vector2(x - this.x, y - this.y).normalize();
+    this.body.setVelocity(direction.x * currentSpeed, direction.y * currentSpeed);
+
+    this.tryingToMove = true
+  }
+
+  /**
+   * Rotate the sprite to face a world coordinate.
+   * @param {number} targetX
+   * @param {number} targetY
+   */
+  turnToFace(targetX, targetY) {
+    const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
+    this.setRotation(angle);
+  }
+
 }
