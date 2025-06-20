@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import Unit from '../entities/Unit.js'; // Assuming Unit is defined in entities/Unit.js
+import Unit from '../entities/Unit.js';
+import { TeamRelationship, Team } from '../entities/Team.js';
 
 export default class BattleScene extends Phaser.Scene {
 
@@ -37,16 +38,34 @@ export default class BattleScene extends Phaser.Scene {
     // Background setup
     this.cameras.main.setBackgroundColor(0x225822); // grassy green
 
+    // Entity setup
+    this.teams = {
+      playerDawn: new Team(this, 'Dawn', '#1188FF'),
+      playerNevvar: new Team(this, 'Nevvar', '#22FF22'),
+      monsterJotun: new Team(this, 'Jotun', '#FF2222')
+    };
+    this.teams.playerDawn.setRelationship(this.teams.playerNevvar, TeamRelationship.ALLY);
+    this.teams.playerDawn.setRelationship(this.teams.monsterJotun, TeamRelationship.ENEMY);
+    this.teams.playerNevvar.setRelationship(this.teams.playerDawn, TeamRelationship.ALLY);
+    this.teams.playerNevvar.setRelationship(this.teams.monsterJotun, TeamRelationship.ENEMY);
+    this.teams.monsterJotun.setRelationship(this.teams.playerDawn, TeamRelationship.ENEMY);
+    this.teams.monsterJotun.setRelationship(this.teams.playerNevvar, TeamRelationship.ENEMY);
+
     // Create an array to hold the units
-    this.units = [
-      new Unit(this, 100, 100, 40, 100, '#FF0000'), // Red
-      new Unit(this, 200, 100, 40, 150, '#00FF00'), // Green
-      new Unit(this, 300, 100, 40, 200, '#0000FF')  // Blue
-    ];
+    this.units = {
+      unit1: new Unit(this, 100, 100, 40, 100),
+      unit2: new Unit(this, 200, 100, 40, 150),
+      unit3: new Unit(this, 300, 100, 40, 200)
+    };
+
+    // Add units to teams
+    this.teams.playerDawn.addUnit(this.units.unit1);
+    this.teams.playerNevvar.addUnit(this.units.unit2);
+    this.teams.monsterJotun.addUnit(this.units.unit3);
 
     // Object pooling setup, including physics
     this.unitGroup = this.physics.add.group({ runChildUpdate: true });
-    this.units.forEach(unit => {
+    Object.values(this.units).forEach(unit => {
       this.unitGroup.add(unit);
     });
 

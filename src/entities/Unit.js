@@ -85,8 +85,10 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  // --- ACCESSORS ---
+
   /**
-   * Set the colour of the unit.
+   * Set the colour of the unit, by changing its tint.
    * @param {string} colour - Hex colour code, e.g. '#FF0000'.
    */
   setColour(colour) {
