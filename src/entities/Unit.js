@@ -24,6 +24,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.setColour(this.colour);
 
     this.moveSpeed = speed || 200; // Default speed in pixels per second
+    this.tryingToMove = false;
     this.acceleration = 800;
 
     // Interaction
@@ -62,6 +63,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       const ratio = currentSpeed / speed;
       this.body.setVelocity(v.x * ratio, v.y * ratio);
     }
+
+    this.tryingToMove = true
   }
 
   /**
@@ -93,6 +96,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       if (this.body.speed < 20) {
         this.body.setVelocity(0, 0);
       }
+      this.tryingToMove = false;
     }
 
     // No matter the desired movement, we need to check bounds
