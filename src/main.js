@@ -8,7 +8,13 @@ const config = {
   height: 600,
   parent: 'app',
   scene: [ BattleScene ],
-  physics: { default: 'arcade' },
+  physics: {
+    default: 'arcade',
+    arcade: {
+      debug: false,
+      debugBodyColor: 0xff00ff,
+    }
+  }
 };
 
 const game = new Phaser.Game(config);
