@@ -27,6 +27,7 @@ export class Team extends Phaser.GameObjects.Group {
         this.colour = colour || '#888888'; // Default grey if no colour is provided
         this.units = units;
         this.teamRelationship = {}
+        this.teamRelationship[name] = TEAM_RELATIONSHIP.ALLY; // Default relationship with itself
 
         // Add each unit to the group
         units.forEach(unit => {
@@ -69,7 +70,7 @@ export class Team extends Phaser.GameObjects.Group {
     /**
      * Add relationship with another team.
      * If the relationship already exists, it will be updated.
-     * @param {string} team - The name of the other team.
+     * @param {string} teamName - The name of the other team.
      * @param {TEAM_RELATIONSHIP} relationship - The relationship status (e.g., 'ally', 'enemy').
      */
     setRelationship(teamName, relationship) {
@@ -85,6 +86,7 @@ export class Team extends Phaser.GameObjects.Group {
      * @returns {TEAM_RELATIONSHIP} The relationship status with the specified team.
      */
     getRelationship(teamName) {
+        let debug_val = this.teamRelationship[teamName]
         return this.teamRelationship[teamName] || TEAM_RELATIONSHIP.UNKNOWN;
     }
 

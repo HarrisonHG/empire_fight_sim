@@ -25,7 +25,11 @@ export default class BattleScene extends Phaser.Scene {
   preload() {
     // Load assets here if needed
     // this.load.image('example', 'path/to/example.png');
-    this.load.image('unit', 'assets/unit.png'); // Load the unit sprite
+    this.load.image('empty',         'assets/unit/empty.png');
+    this.load.image('body',         'assets/unit/body.png');
+    this.load.image('smile',        'assets/unit/smile.png');
+    this.load.image('angry_shout',  'assets/unit/angry_shout.png');
+    this.load.image('unit',         'assets/unit.png'); // Backup
     this.load.once('complete', () => {
       console.log('BattleScene assets preloaded');
     });
@@ -45,12 +49,12 @@ export default class BattleScene extends Phaser.Scene {
       playerNevvar: new Team(this, 'Nevvar', '#22FF22'),
       monsterJotun: new Team(this, 'Jotun', '#FF2222')
     };
-    this.teams.playerDawn.setRelationship(this.teams.playerNevvar, TEAM_RELATIONSHIP.ALLY);
-    this.teams.playerDawn.setRelationship(this.teams.monsterJotun, TEAM_RELATIONSHIP.ENEMY);
-    this.teams.playerNevvar.setRelationship(this.teams.playerDawn, TEAM_RELATIONSHIP.ALLY);
-    this.teams.playerNevvar.setRelationship(this.teams.monsterJotun, TEAM_RELATIONSHIP.ENEMY);
-    this.teams.monsterJotun.setRelationship(this.teams.playerDawn, TEAM_RELATIONSHIP.ENEMY);
-    this.teams.monsterJotun.setRelationship(this.teams.playerNevvar, TEAM_RELATIONSHIP.ENEMY);
+    this.teams.playerDawn.setRelationship(this.teams.playerNevvar.name, TEAM_RELATIONSHIP.ALLY);
+    this.teams.playerDawn.setRelationship(this.teams.monsterJotun.name, TEAM_RELATIONSHIP.ENEMY);
+    this.teams.playerNevvar.setRelationship(this.teams.playerDawn.name, TEAM_RELATIONSHIP.ALLY);
+    this.teams.playerNevvar.setRelationship(this.teams.monsterJotun.name, TEAM_RELATIONSHIP.ENEMY);
+    this.teams.monsterJotun.setRelationship(this.teams.playerDawn.name, TEAM_RELATIONSHIP.ENEMY);
+    this.teams.monsterJotun.setRelationship(this.teams.playerNevvar.name, TEAM_RELATIONSHIP.ENEMY);
 
     // Create an array to hold the units
     this.units = {

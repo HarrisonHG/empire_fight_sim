@@ -1,4 +1,5 @@
 import Unit from '../entities/Unit.js';
+import { STATUS, LIMB_HEALTH } from '../systems/status.js';
 
 /**
  * Decision Making System
@@ -183,7 +184,7 @@ export class Action {
     this.name = name; // Name of the action
     this.description = description; // Description of the action
     this.motions = motions; // Array of motions that make up the action
-    this.conditions = []; // Conditions that must be met to perform this action
+    this.conditions = conditions; // Conditions that must be met to perform this action
   }
 }
 
@@ -219,12 +220,14 @@ export const ACTIONS = {
  * interupted by thoughts and emergency decisions by the unit.
  */
 export class Stance {
-  constructor(name, description, primaryActions = [], supportingActions = []) {
+  constructor(name, description, primaryActions = [], enforcePrimaryActionOrder = true, 
+      supportingActions = [], faceImage = null) {
     this.name = name; // Name of the stance
     this.description = description; // Description of the stance
     this.primaryActions = primaryActions // Actions that this stance wants to achieve
-    this.enforcePrimaryActionOrder = true; // Whether the primary actions should be enforced in order
+    this.enforcePrimaryActionOrder = enforcePrimaryActionOrder; // Whether the primary actions should be enforced in order
     this.supportingActions = supportingActions; // Supporting actions that help achieve the primary actions
+    this.faceImage = faceImage; // Optional image tag to represent the stance visually
   }
 }
 
@@ -234,13 +237,15 @@ export const STANCES = {
         "Unit runs in to attack the target quickly with little regard for personal safety.",
         [ACTIONS.ATTACK],
         false,
-        [ACTIONS.MOVE_TO_TARGET]
+        [ACTIONS.MOVE_TO_TARGET],
+        'angry_shout'
     ),
     RELAXED: new Stance(
         "Relaxed",
         "Unit is in a neutral state, regaining energy and morale until something comes near.",
         [ACTIONS.STAND],
         false,
-        []
+        [],
+        'smile'
     ),
 };

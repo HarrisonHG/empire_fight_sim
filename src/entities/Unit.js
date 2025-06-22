@@ -21,14 +21,14 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    * @param {string} [colour] - Hex colour of the unit, e.g. '#FF0000' for red.
    */
   constructor(scene, x, y, size, speed, colour) {
-    super(scene, x, y, 'unit');
+    super(scene, x, y, 'empty');
+    this.scene = scene;
 
     // Init visuals
-    this.scene = scene;
-    this.setOrigin(0.5, 0.5); // Center the sprite
+    // TODO: The below section is being commented out for testing.
+    // If stuff breaks visually, reinvestigate.
+    // this.setOrigin(0.5, 0.5); // Center the sprite
     this.setDisplaySize(size, size);
-    this.colour = colour || '#888888'; // Default grey
-    this.setColour(this.colour);
 
     // Movement
     this.moveSpeed = speed || 200; // Default speed in pixels per second
@@ -56,6 +56,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       rightLeg: LIMB_HEALTH.OK
     }
     this.statuses = []; // Array to hold statuses like 'paralysed', 'entangled', etc.
+    this.isAlive = true; // Is the unit alive? Used for health checks and interactions.
 
     // Gameplay properties
     this.team = null;
@@ -68,6 +69,28 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     //this.body.setOffset((size/2)+5, (size/2)+5); // Center the circle
     this.body.setBounce(1);
     this.body.setCollideWorldBounds(true);
+
+    // Visuals
+    this.colour = colour || '#888888'; // Default grey
+    this.setColour(this.colour);
+    this.viz = scene.add.container(x, y);    
+    this.baseVisual = scene.add.image(0, 0, 'body')
+      .setDisplaySize(size, size);
+    this.faceVisual = scene.add.image(0, 0, 'smile')
+      .setDisplaySize(size, size)
+      .setDepth(1);
+
+    // TEMPORARY HEALTH BAR (until we get something less intrusive implemented)
+    this.barBG = scene.add.rectangle(0, -size/2 - 6, size, 4, 0x000000);
+    this.bar  = scene.add.rectangle(
+      -size/2, -size/2 - 6,
+      size, 4, 0xff0000
+    ).setOrigin(0, 0.5);
+
+    this.viz.add([ this.baseVisual, this.faceVisual, this.barBG, this.bar ]);
+
+    this.maxHp = 2;
+    this.hp = this.maxHp;
   }
 
   /**
@@ -125,6 +148,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       );
       this.body.setVelocityY(0);
     }
+
+    this.syncVisuals()
   }
 
   // --- ACCESSORS ---
@@ -135,7 +160,9 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    */
   setColour(colour) {
     this.colour = colour;
-    this.setTint(Phaser.Display.Color.HexStringToColor(colour).color);
+    if (this.baseVisual) {
+      this.baseVisual.setTint(Phaser.Display.Color.HexStringToColor(colour).color);
+    }
   }
 
   /**
@@ -189,20 +216,22 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    * @see STANCES for implemented stances.
    */
   chooseStance() {
-    
     // If there are enemy units in , set stance to CHARGE
     const enemyUnits = this.scene.unitGroup.getChildren().filter(targetUnit => 
-      this.team.getRelationship(targetUnit.team) == TEAM_RELATIONSHIP.ENEMY &&
+      this.team.getRelationship(targetUnit.team.name) == TEAM_RELATIONSHIP.ENEMY &&
+      targetUnit.isAlive && // Only consider alive units
+      targetUnit !== this && // Don't target ourselves
       Phaser.Math.Distance.Between(this.x, this.y, targetUnit.x, targetUnit.y) < 1000 // debug value
     );
     if (enemyUnits.length > 0) {
       this.setStance(STANCES.CHARGE);
       this.targetUnit = this.chooseClosestUnit(enemyUnits);
       if (this.targetUnit) {
-        console.log(`Unit ${this.id} targeting enemy unit: ${this.targetUnit.id}`);
+        console.debug(`Unit ${this.id} targeting enemy unit: ${this.targetUnit.id}`);
       } else {
-        console.warn(`Unit ${this.id} could not find a target unit.`);
+        console.debug(`Unit ${this.id} could not find a target unit.`);
       }
+      return;
     }
 
     // Else, relax man, you've earned it.
@@ -219,24 +248,27 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       throw new Error('Invalid stance provided. Must be an instance of Stance.');
     }
     this.completedActions = []; // Reset completed actions for the new stance
-    this.completedMotions = []; // Reset completed motions for the new action
+    this.currentAction = null; // Reset current action for the new stance
     this.currentStance = stance;
-    console.log(`Unit ${this.id} set to stance: ${stance.name}`);
+    console.debug(`Unit ${this.id} set to stance: ${stance.name}`);
+
+    // Set the visuals based on the stance
+    let newFace = stance.faceImage || 'smile'; // Default to smile if no face image is provided
+    this.faceVisual.setTexture(newFace);
+    this.faceVisual.setDisplaySize(this.displayWidth, this.displayWidth);
   }
 
   /**
    * Check if a condition is met for the unit.
-   * @param {string} condition - The condition to check.
-   * @param {any} [data] - Optional value to check against the condition.
+   * @param {Object} condition - The condition to check (must be in CONDITIONS).
    * @returns {boolean} True if the condition is met, false otherwise.
    */
-  checkCondition(condition, data) {
-    const handler = CONDITION_HANDLERS[condition];
-    if (!handler) {
+  checkCondition(condition) {
+    if (!condition || typeof condition.handler !== 'function') {
       console.warn(`Condition "${condition}" not implemented.`);
       return false;
     }
-    return handler(this, data);
+    return condition.handler(this);
   }
 
   /**
@@ -260,16 +292,19 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     } 
 
     // Prevent repeating the same action more times than the primaryActions reuiqre.
-    const completedCount = this.completedActions.filter(a => a === action).length;
     const primaryCount = this.currentStance.primaryActions.filter(a => a === action).length;
-    if (completedCount >= primaryCount) {
-      return false;
+    if (primaryCount > 0) {
+      const completedCount = this.completedActions.filter(a => a === action).length;
+      if (completedCount >= primaryCount) {
+        return false;
+      }
     }
+    // Else, this is not a primary action and so can be repeated as needed.
 
     for (const condition of action.conditions) {
       // Pass data[condition] if it exists, else undefined
       if (!this.checkCondition(condition)) {
-        console.log(`Unit ${this.id} cannot perform action: ${action.name} due to condition: ${condition}`);
+        console.debug(`Unit ${this.id} cannot perform action: ${action.name} due to condition: ${condition}`);
         return false;
       }
     }
@@ -282,13 +317,15 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    */
   chooseNextAction() {
 
-    this.completedMotions = [];
+    this.completedMotions = []; // Reset completed motions for the new action
+    this.currentMotion = null; // Reset current motion for the new action
+
     if (this.currentAction)
       this.completedActions.push(this.currentAction);
 
     // Have we fulfulled the current stance?
     if (this.completedActions.length >= this.currentStance.primaryActions.length) {
-      console.log(`Unit ${this.id} has completed its current stance: ${this.currentStance.name}`);
+      console.debug(`Unit ${this.id} has completed its current stance: ${this.currentStance.name}`);
       this.chooseStance()
       return this.chooseNextAction();
     }
@@ -296,7 +333,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     // Loop through primary actions of the current stance and act on the first one
     // Who's conditions are met and not already completed.
     if (!this.currentStance || !this.currentStance.primaryActions.length) {
-      console.warn(`Unit ${this.id} has no primary actions in current stance: ${this.currentStance.name}`);
+      console.debug(`Unit ${this.id} has no primary actions in current stance: ${this.currentStance.name}`);
       this.currentAction = ACTIONS.STAND; // Default to standing still
       return this.currentAction;
     }
@@ -305,7 +342,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     for (const action of this.currentStance.primaryActions) {
       if (this.checkActionConditions(action)) {
         this.currentAction = action;
-        console.log(`Unit ${this.id} chose primary action: ${action.name}`);
+        console.debug(`Unit ${this.id} chose primary action: ${action.name}`);
         return action;
       }
     }
@@ -314,14 +351,14 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     for (const action of this.currentStance.supportingActions) {
       if (this.checkActionConditions(action)) {
         this.currentAction = action;
-        console.log(`Unit ${this.id} chose supporting action: ${action.name}`);
+        console.debug(`Unit ${this.id} chose supporting action: ${action.name}`);
         return action;
       }
     }
 
     // If no actions are available, default to standing still
     this.currentAction = ACTIONS.STAND;
-    console.log(`Unit ${this.id} has no valid actions, defaulting to stand.`);
+    console.debug(`Unit ${this.id} has no valid actions, defaulting to stand.`);
   }
 
   /**
@@ -420,12 +457,13 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    */
   turnToFace(targetX, targetY) {
     const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
-    this.setRotation(angle);
+    this.baseVisual.setRotation(angle);
+    this.faceVisual.setRotation(angle);
   }
 
   // --- ACTIONS/MOTIONS ---
 
-  strike(target = targetUnit) {
+  strike(target = this.targetUnit) {
 
     // Not implemented yet. SOON!
     if (!this.isTargetInRange(target)) {
@@ -434,8 +472,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
 
     response = InteractionSystem.interact(this, target, new InteractionPayload('Attack', 1));
-    console.log(`Unit ${this.id} received interaction result: ${response.valueRecieved} with calls taken: ${response.callsTaken}`);
-
+    console.debug(`Unit ${this.id} received interaction result: ${response.valueRecieved} with calls taken: ${response.callsTaken}`);
   }
 
   /**
@@ -446,7 +483,26 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     if (!(payload instanceof InteractionPayload)) {
       throw new Error("Invalid payload for interaction.");
     }
-    console.log(`Unit ${this.id} received interaction: ${payload.call} with value: ${payload.value}`);
+    console.debug(`Unit ${this.id} received interaction: ${payload.call} with value: ${payload.value}`);
+
+    if (payload.offensive) {
+      // TODO: Handle the intricacies of combat. for not, just take the hit.
+      this.hp -= payload.value;
+    }
+
+    // Check if the unit is dead
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.setTint(0x000000); // Set to black to indicate death
+      console.debug(`Unit ${this.id} has died.`);
+      this.isAlive = false;
+      this.faceVisual.setTexture('dead'); // Change face to dead
+      this.body.setVelocity(0, 0); // Stop all movement
+
+      // Body is not on the floor and can be stepped over.
+      this.body.checkCollision.none = true;
+      this.body.enable = false;
+    }
 
     // TODO: the rest of this stuff.
     // For now, just return a dummy InteractionResult
@@ -458,15 +514,21 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
   // --- GRAPHICS ---
 
   /**
-   * Build the unit's graphics.
-   * The sprite consists of:
-   *  - Body: Indicating the health of the unit.
-   *  - Face: Matches the stance of the unit.
-   *  - Armour: Matches the armour the unit is wearing. (NOT IMPLEMENTED YET)
-   * @note All statistics (HP, stance etc.) of the unit must be in place before this is called.
+   * Resync the visuals of the unit.
+   * This is a light call to shift the visuals around
+   * and update the health bar.
+   * Any state changes, such as a new stance, are responsible for setting new visuals.
    */
-  buildSprite() {
+  syncVisuals() {
 
-    
+    // move the container to the body’s position
+    this.viz.setPosition(this.x, this.y);
+    this.viz.setRotation(this.rotation);
+
+    // update health‐bar width
+    const w = this.baseVisual.displayWidth;
+    const pct = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
+    this.bar.width = w * pct;
   }
+
 }
