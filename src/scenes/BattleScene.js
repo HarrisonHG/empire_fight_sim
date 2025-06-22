@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import Unit from '../entities/Unit.js';
-import { TeamRelationship, Team } from '../entities/Team.js';
+import { TEAM_RELATIONSHIP, Team } from '../entities/Team.js';
+import UnitSpawner from '../controls/UnitSpawner.js';
 
 export default class BattleScene extends Phaser.Scene {
 
@@ -44,12 +45,12 @@ export default class BattleScene extends Phaser.Scene {
       playerNevvar: new Team(this, 'Nevvar', '#22FF22'),
       monsterJotun: new Team(this, 'Jotun', '#FF2222')
     };
-    this.teams.playerDawn.setRelationship(this.teams.playerNevvar, TeamRelationship.ALLY);
-    this.teams.playerDawn.setRelationship(this.teams.monsterJotun, TeamRelationship.ENEMY);
-    this.teams.playerNevvar.setRelationship(this.teams.playerDawn, TeamRelationship.ALLY);
-    this.teams.playerNevvar.setRelationship(this.teams.monsterJotun, TeamRelationship.ENEMY);
-    this.teams.monsterJotun.setRelationship(this.teams.playerDawn, TeamRelationship.ENEMY);
-    this.teams.monsterJotun.setRelationship(this.teams.playerNevvar, TeamRelationship.ENEMY);
+    this.teams.playerDawn.setRelationship(this.teams.playerNevvar, TEAM_RELATIONSHIP.ALLY);
+    this.teams.playerDawn.setRelationship(this.teams.monsterJotun, TEAM_RELATIONSHIP.ENEMY);
+    this.teams.playerNevvar.setRelationship(this.teams.playerDawn, TEAM_RELATIONSHIP.ALLY);
+    this.teams.playerNevvar.setRelationship(this.teams.monsterJotun, TEAM_RELATIONSHIP.ENEMY);
+    this.teams.monsterJotun.setRelationship(this.teams.playerDawn, TEAM_RELATIONSHIP.ENEMY);
+    this.teams.monsterJotun.setRelationship(this.teams.playerNevvar, TEAM_RELATIONSHIP.ENEMY);
 
     // Create an array to hold the units
     this.units = {
@@ -85,6 +86,9 @@ export default class BattleScene extends Phaser.Scene {
     this.physics.world.setBoundsCollision(true, true, true, true); // Enable world bounds collision
     this.physics.world.setFPS(60); // Set the physics world to run at 60 FPS
     
+
+    // Input handling
+    this.spawner = new UnitSpawner(this, this.teams, this.unitGroup);
   }
 
   /**

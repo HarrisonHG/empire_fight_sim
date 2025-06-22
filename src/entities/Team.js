@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import Unit from './Unit.js';
 
-export const TeamRelationship = Object.freeze({
+export const TEAM_RELATIONSHIP = Object.freeze({
     ALLY: 'ally',
     ENEMY: 'enemy',
     NEUTRAL: 'neutral',
@@ -41,7 +41,7 @@ export class Team extends Phaser.GameObjects.Group {
      * @param {Unit} unit - The unit to add.
      */
     addUnit(unit) {
-        unit.setColour(this.colour);
+        unit.setTeam(this);
         this.units.push(unit);
         this.add(unit);
     }
@@ -70,10 +70,10 @@ export class Team extends Phaser.GameObjects.Group {
      * Add relationship with another team.
      * If the relationship already exists, it will be updated.
      * @param {string} team - The name of the other team.
-     * @param {TeamRelationship} relationship - The relationship status (e.g., 'ally', 'enemy').
+     * @param {TEAM_RELATIONSHIP} relationship - The relationship status (e.g., 'ally', 'enemy').
      */
     setRelationship(teamName, relationship) {
-        if (!Object.values(TeamRelationship).includes(relationship)) {
+        if (!Object.values(TEAM_RELATIONSHIP).includes(relationship)) {
             throw new Error(`Invalid relationship: ${relationship}`);
         }
         this.teamRelationship[teamName] = relationship;
@@ -82,10 +82,10 @@ export class Team extends Phaser.GameObjects.Group {
     /**
      * Get the relationship with another team.
      * @param {string} teamName - The name of the other team.
-     * @returns {TeamRelationship} The relationship status with the specified team.
+     * @returns {TEAM_RELATIONSHIP} The relationship status with the specified team.
      */
     getRelationship(teamName) {
-        return this.teamRelationship[teamName] || TeamRelationship.UNKNOWN;
+        return this.teamRelationship[teamName] || TEAM_RELATIONSHIP.UNKNOWN;
     }
 
     // --- METHODS ---
