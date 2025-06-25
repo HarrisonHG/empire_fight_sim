@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
 import Unit from '../entities/Unit.js';
 import { TEAM_RELATIONSHIP, Team } from '../entities/Team.js';
-import UnitSpawner from '../controls/UnitSpawner.js';
+
+import UnitSpawner from '../controls/unitSpawner.js';
+import RespawnSpawner from '../controls/RespawnSpawner.js';
+import RallyPointSpawner from '../controls/RallyPointSpawner.js';
 
 export default class BattleScene extends Phaser.Scene {
 
@@ -26,8 +29,11 @@ export default class BattleScene extends Phaser.Scene {
     // Load assets here if needed
     // this.load.image('example', 'path/to/example.png');
     this.load.image('empty',         'assets/unit/empty.png');
+    this.load.image('respawn_point',  'assets/building/respawn_flag.png');
+    this.load.image('rally_point',  'assets/building/respawn_flag.png');
     this.load.image('body',         'assets/unit/body.png');
     this.load.image('smile',        'assets/unit/smile.png');
+    this.load.image('dead',         'assets/unit/dead.png');
     this.load.image('angry_shout',  'assets/unit/angry_shout.png');
     this.load.image('unit',         'assets/unit.png'); // Backup
     this.load.once('complete', () => {
@@ -90,9 +96,10 @@ export default class BattleScene extends Phaser.Scene {
     this.physics.world.setBoundsCollision(true, true, true, true); // Enable world bounds collision
     this.physics.world.setFPS(60); // Set the physics world to run at 60 FPS
     
-
     // Input handling
-    this.spawner = new UnitSpawner(this, this.teams, this.unitGroup);
+    this.unit_spawner = new UnitSpawner(this, this.teams, this.unitGroup);
+    this.respawn_spawner = new RespawnSpawner(this, this.teams);
+    this.rally_spawner = new RallyPointSpawner(this, this.teams);
   }
 
   /**

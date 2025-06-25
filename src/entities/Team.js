@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import Unit from './Unit.js';
+import RespawnPoint from './landmarks/RespawnPoint.js';
+import RallyPoint from './landmarks/RallyPoint.js';
 
 export const TEAM_RELATIONSHIP = Object.freeze({
     ALLY: 'ally',
@@ -28,6 +30,8 @@ export class Team extends Phaser.GameObjects.Group {
         this.units = units;
         this.teamRelationship = {}
         this.teamRelationship[name] = TEAM_RELATIONSHIP.ALLY; // Default relationship with itself
+        this.respawnPoints = [];
+        this.rallyPoints = [];
 
         // Add each unit to the group
         units.forEach(unit => {
@@ -88,6 +92,50 @@ export class Team extends Phaser.GameObjects.Group {
     getRelationship(teamName) {
         let debug_val = this.teamRelationship[teamName]
         return this.teamRelationship[teamName] || TEAM_RELATIONSHIP.UNKNOWN;
+    }
+
+    /**
+     * Get the respawn point closest to a given position.
+     * @param {number} x - The x-coordinate to check against.
+     * @param {number} y - The y-coordinate to check against.
+     * @return {RespawnPoint|null} The closest respawn point, or null if none exist.
+     */
+    getClosestRespawnPoint(x, y) {
+        if (this.respawnPoints.length === 0) {
+            return null; // No respawn points available
+        }
+        let closestPoint = null;
+        let closestDistance = Infinity;
+        this.respawnPoints.forEach(respawnPoint => {
+            const distance = Phaser.Math.Distance.Between(x, y, respawnPoint.x, respawnPoint.y);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestPoint = respawnPoint;
+            }
+        });
+        return closestPoint;
+    }
+
+    /**
+     * Get the rally point closest to a given position.
+     * @param {number} x - The x-coordinate to check against.
+     * @param {number} y - The y-coordinate to check against.
+     * @return {RallyPoint|null} The closest rally point, or null
+     */
+    getClosestRallyPoint(x, y) {
+        if (this.rallyPoints.length === 0) {
+            return null; // No rally points available
+        }
+        let closestPoint = null;
+        let closestDistance = Infinity;
+        this.rallyPoints.forEach(rallyPoint => {
+            const distance = Phaser.Math.Distance.Between(x, y, rallyPoint.x, rallyPoint.y);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestPoint = rallyPoint;
+            }
+        });
+        return closestPoint;
     }
 
     // --- METHODS ---

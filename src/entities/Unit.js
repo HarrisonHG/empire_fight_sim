@@ -6,6 +6,7 @@ import { Team, TEAM_RELATIONSHIP } from './Team.js';
 import InteractionPayload from '../systems/interaction/interactionPayload.js';
 import { InteractionResult } from '../systems/interaction/interactionResult.js';
 import { InteractionSystem } from '../systems/interaction/interactionSystem.js';
+import { CALLS } from '../systems/calls.js';
 
 /**
  * Represents one "person" on the field.
@@ -24,12 +25,6 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, 'empty');
     this.scene = scene;
 
-    // Init visuals
-    // TODO: The below section is being commented out for testing.
-    // If stuff breaks visually, reinvestigate.
-    // this.setOrigin(0.5, 0.5); // Center the sprite
-    this.setDisplaySize(size, size);
-
     // Movement
     this.moveSpeed = speed || 200; // Default speed in pixels per second
     this.tryingToMove = false;
@@ -46,7 +41,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.targetUnit = null; // The unit we are currently targeting, if any
     this.MEMORY_SIZE = 20; // Backup value for how many actions and motions we remember
     this.rethinkTimer = 0; // Timer to control how often we rethink our actions in milliseconds.
-    
+    this.ATTACK_COOLDOWN = MOTIONS.STRIKE.duration; // Cooldown for attacks in milliseconds
+
     // Statistics and statuses
     this.range = size * 1.5; // How far can we reach with our attacks
     this.limbHealth = {
@@ -62,6 +58,13 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.team = null;
     this.id = Phaser.Utils.String.UUID(); // Unique identifier for the unit
 
+    // Init visuals
+    // TODO: The below section is being commented out for testing.
+    // If stuff breaks visually, reinvestigate.
+    // this.setOrigin(0.5, 0.5); // Center the sprite
+    this.setDisplaySize(size, size);
+    this.name = this.id.substring(0, 4);
+
     // Physics
     scene.physics.add.existing(this);
     scene.add.existing(this);
@@ -72,6 +75,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
 
     // Visuals
     this.colour = colour || '#888888'; // Default grey
+    this.originalColour = this.colour; // Store the original colour for resetting
     this.setColour(this.colour);
     this.viz = scene.add.container(x, y);    
     this.baseVisual = scene.add.image(0, 0, 'body')
@@ -79,15 +83,35 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.faceVisual = scene.add.image(0, 0, 'smile')
       .setDisplaySize(size, size)
       .setDepth(1);
+    this.viz.add([ this.baseVisual, this.faceVisual ]);
 
-    // TEMPORARY HEALTH BAR (until we get something less intrusive implemented)
-    this.barBG = scene.add.rectangle(0, -size/2 - 6, size, 4, 0x000000);
-    this.bar  = scene.add.rectangle(
-      -size/2, -size/2 - 6,
-      size, 4, 0xff0000
-    ).setOrigin(0, 0.5);
+    if ( scene.sys.game.config.physics.arcade.debug ) {
+      // Add a translucent circle to visualize the unit's range if debug is on
+      this.reachCircle = scene.add.graphics();
+      this.reachCircle.fillStyle(Phaser.Display.Color.HexStringToColor(this.colour).color, 0.15);
+      this.reachCircle.fillCircle(0, 0, this.range);
+      this.reachCircle.setDepth(-1); // Behind the unit
+      this.viz.add(this.reachCircle);
 
-    this.viz.add([ this.baseVisual, this.faceVisual, this.barBG, this.bar ]);
+      // Health bars are useful for debugging, but not for gameplay.
+      this.barBG = scene.add.rectangle(0, -size/2 - 6, size, 4, 0x000000);
+      this.bar = scene.add.rectangle(
+        -size/2, -size/2 - 6,
+        size, 4, 0xff0000
+      ).setOrigin(0, 0.5);
+      this.viz.add([this.barBG, this.bar]);
+    }
+
+    // Add a text label for the unit's name, centered on the unit
+    this.nameText = scene.add.text(0, 0, this.name, {
+      fontFamily: 'Arial',
+      fontSize: Math.round(size / 2.5),
+      color: '#000000',
+      align: 'center',
+      stroke: '#ffffff',
+      strokeThickness: 0
+    }).setOrigin(0.5, 0.5).setDepth(2);
+    this.viz.add(this.nameText);
 
     this.maxHp = 2;
     this.hp = this.maxHp;
@@ -166,6 +190,25 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
+   * Add a shade of tint to the unit's colour.
+   * Does not alter the original colour, but adds a tint on top of it.
+   * @param {string} tint - Hex colour code, e.g. '#FF0000'.
+   */
+  addTint(tint) {
+    // Apply an additional dark tint to the existing colour to indicate death
+    const baseColor = Phaser.Display.Color.HexStringToColor(this.colour);
+    const newTint = Phaser.Display.Color.IntegerToColor(tint);
+    const tinted = Phaser.Display.Color.Interpolate.ColorWithColor(
+      baseColor,
+      newTint,
+      1,
+      0.5
+    );
+    const tintVal = Phaser.Display.Color.GetColor(tinted.r, tinted.g, tinted.b);
+    this.baseVisual.setTint(tintVal);
+  }
+
+  /**
    * Set the team of the unit.
    * This unit will also take on the team's colour.
    * @param {Team} team - The team to which this unit belongs.
@@ -216,7 +259,28 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    * @see STANCES for implemented stances.
    */
   chooseStance() {
-    // If there are enemy units in , set stance to CHARGE
+
+    // If the unit is dead, it will respawn (if there's a respawn point) or stay dead.
+    if (!this.isAlive) {
+      const closestRespawnPoint = this.team.getClosestRespawnPoint(this.x, this.y);
+      if (closestRespawnPoint) {
+        console.debug(`Unit ${this.id} is dead, respawning at closest respawn point.`);
+        this.targetUnit = closestRespawnPoint; // This is fine. Totally fine.
+        
+        this.body.checkCollision.none = true; // Disable collision checks while respawning
+        this.body.enable = true;
+        this.viz.setDepth(0);
+
+        this.setStance(STANCES.RESPAWN);
+      }
+      else {
+        console.debug(`Unit ${this.id} is dead, no respawn point available.`);
+        this.setStance(STANCES.DEAD);
+      }
+      return;
+    }
+
+    // If there are enemy units in the world, set stance to CHARGE
     const enemyUnits = this.scene.unitGroup.getChildren().filter(targetUnit => 
       this.team.getRelationship(targetUnit.team.name) == TEAM_RELATIONSHIP.ENEMY &&
       targetUnit.isAlive && // Only consider alive units
@@ -231,6 +295,15 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       } else {
         console.debug(`Unit ${this.id} could not find a target unit.`);
       }
+      return;
+    }
+
+    // No enemies? Rally to the rally point.
+    this.closestRallyPoint = this.team.getClosestRallyPoint(this.x, this.y);
+    if (this.closestRallyPoint) {
+      console.debug(`Unit ${this.id} found closest rally point: ${this.closestRallyPoint.team}`);
+      this.targetUnit = this.closestRallyPoint;
+      this.setStance(STANCES.RALLY);
       return;
     }
 
@@ -268,6 +341,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       console.warn(`Condition "${condition}" not implemented.`);
       return false;
     }
+    const debug_val = condition.handler(this);
     return condition.handler(this);
   }
 
@@ -320,8 +394,12 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.completedMotions = []; // Reset completed motions for the new action
     this.currentMotion = null; // Reset current motion for the new action
 
-    if (this.currentAction)
+    if (this.currentAction && this.currentStance.primaryActions.includes(this.currentAction)) {
+      // We only care about tracking primary actions as they are the goal of the stance.
+      // Secondary actions will be repeated infitiely until the primary actions are completed.
+      console.debug(`Unit ${this.id} completed action: ${this.currentAction.name}`);
       this.completedActions.push(this.currentAction);
+    }
 
     // Have we fulfulled the current stance?
     if (this.completedActions.length >= this.currentStance.primaryActions.length) {
@@ -398,7 +476,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
     
     // Calculate distance to target unit
-    const distance = Phaser.Math.Distance.Between(this.x, this.y, targetUnit.x, targetUnit.y);
+    let distance = Phaser.Math.Distance.Between(this.x, this.y, targetUnit.x, targetUnit.y);
+    distance -= targetUnit.displayWidth / 2; // Adjust for the target unit's size
     return distance <= this.range;
   }
 
@@ -432,7 +511,9 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
 
     // Calculate max speed achievable
-    let currentSpeed = this.moveSpeed; // Multipliers n shit to come.
+    let currentSpeed = this.moveSpeed;
+    if (!this.isAlive)
+      currentSpeed /= 2;
 
     // We'll face the way we wish to move to.
     this.turnToFace(x, y)
@@ -461,9 +542,21 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.faceVisual.setRotation(angle);
   }
 
+  /**
+   * Lay down dead. No moving, just dead.
+   * 
+   */
+
   // --- ACTIONS/MOTIONS ---
 
+  /**
+   * Attack the target with a melee weapon
+   * @param {Unit} target 
+   * @returns 
+   */
   strike(target = this.targetUnit) {
+
+    this.standStill(); // Stop moving before striking
 
     // Not implemented yet. SOON!
     if (!this.isTargetInRange(target)) {
@@ -471,8 +564,43 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
-    response = InteractionSystem.interact(this, target, new InteractionPayload('Attack', 1));
-    console.debug(`Unit ${this.id} received interaction result: ${response.valueRecieved} with calls taken: ${response.callsTaken}`);
+    const response = InteractionSystem.interact(this, target, new InteractionPayload(null, 1, true));    
+    console.debug(`Unit ${this.id} received interaction result: ${response.valueRecieved} with call taken: ${response.callTaken}`);
+  
+    this.rethinkTimer = this.ATTACK_COOLDOWN; // Set cooldown for the next attack
+    // TODO: Maybe handle stepping back and forth. But for now, just stand still.
+    this.completedMotions.push(MOTIONS.STRIKE); // Mark the strike motion as completed
+    this.currentMotion = MOTIONS.IDLE; // Reset current motion after striking
+    this.standStill();
+  }
+
+  /**
+   * Come alive again at a respawn point.
+   * This is the monster respawn kind, not the healed-to-life kind.
+   */
+  respawn() {
+    if (this.isAlive) {
+      console.warn(`Unit ${this.id} is already alive, cannot respawn.`);
+      return;
+    }
+
+    this.isAlive = true;
+    this.hp = this.maxHp; // Reset health to max
+    this.body.enable = true; // Re-enable physics body
+    this.body.checkCollision.none = false; // Re-enable collision checks
+
+    this.baseVisual.clearTint();
+    if (this.team) {
+      this.setColour(this.team.colour);
+    }
+    else {
+      this.setColour(this.originalColour);
+    }
+    this.faceVisual.setTexture('smile');
+    this.viz.setDepth(0);
+    this.targetUnit = null; // Clear the target unit (which was the respawn point)
+    this.standStill(); // Stop any movement
+    this.chooseStance()
   }
 
   /**
@@ -492,23 +620,43 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
 
     // Check if the unit is dead
     if (this.hp <= 0) {
-      this.hp = 0;
-      this.setTint(0x000000); // Set to black to indicate death
-      console.debug(`Unit ${this.id} has died.`);
       this.isAlive = false;
-      this.faceVisual.setTexture('dead'); // Change face to dead
-      this.body.setVelocity(0, 0); // Stop all movement
-
-      // Body is not on the floor and can be stepped over.
-      this.body.checkCollision.none = true;
-      this.body.enable = false;
+      
+      console.debug(`Unit ${this.id} has died.`);
+      this.hp = 0;
+      this.setStance(STANCES.DEAD);
+      this.layDead();
+    }
+    else {
+      // If the unit is not dead, trigger the unit to rethink its actions.
+      this.rethinkTimer = Math.min(this.rethinkTimer, 1000);
     }
 
     // TODO: the rest of this stuff.
     // For now, just return a dummy InteractionResult
-    const callsTaken = CALLS[payload.call] || null;
-    const valueRecieved = payload.value || 0;
-    return new InteractionResult(valueRecieved, callsTaken);
+    const callTaken = true;
+    const valueRecieved = payload.value;
+    return new InteractionResult(valueRecieved, callTaken);
+  }
+
+  /**
+   * Lay down dead.
+   * This is the monster respawn kind, not the healed-to-life kind.
+   */
+  layDead() {
+    if (this.isAlive) {
+      console.warn(`Unit ${this.id} is alive, cannot lay dead.`);
+      return;
+    }
+
+    this.addTint('#FF0000'); // Add a red tint to indicate death
+    this.faceVisual.setTexture('dead'); // Change face to dead
+    this.body.setVelocity(0, 0); // Stop all movement
+
+    // Body is not on the floor and can be stepped over.
+    this.body.checkCollision.none = true;
+    this.body.enable = false;
+    this.viz.setDepth(-1000); // Move visuals to the back of the scene
   }
 
   // --- GRAPHICS ---
@@ -525,10 +673,18 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.viz.setPosition(this.x, this.y);
     this.viz.setRotation(this.rotation);
 
-    // update health‐bar width
-    const w = this.baseVisual.displayWidth;
-    const pct = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
-    this.bar.width = w * pct;
+    if ( this.scene.sys.game.config.physics.arcade.debug ) {
+      // update health‐bar width
+      const w = this.baseVisual.displayWidth;
+      const pct = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
+      this.bar.width = w * pct;
+      if (!this.isAlive) {
+        this.bar.setVisible(false); // Hide the health bar if dead
+        this.barBG.setVisible(false); // Hide the health bar background if dead
+      }
+    }
+    
+    this.nameText.setPosition(0, this.displayHeight - 10);
   }
 
 }

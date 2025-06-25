@@ -6,7 +6,7 @@ A web-based fight simulator using empire larp fight rules
 
 1. X Create a team entity that units can be part of.
     - This will determine respawn rate, location, colour, allies, enemies.
-2. Spawn units on 1+click, 2+click etc.
+2. X Spawn units on 1+click, 2+click etc.
 3. Move units towards enemy teams.
 4. Introduce HP.
 5. Introduce "Action" obj. Start with attack, which is just hit unit within range.
@@ -59,7 +59,6 @@ Stance - A desired action and what actions are needed to achieve it
         - Bad: high stamina cost, near-zero defence rate, near-zero attack rate
 
 Action - A series of motions used to create a neutral-to-neutral sequence
-    - ChooseTarget
     - Attack
     - Move
     - Save
@@ -73,6 +72,7 @@ Action - A series of motions used to create a neutral-to-neutral sequence
     - Stand
 
 Motion - Individual movements that make up actions
+    - ChooseTarget
     - Target
     - Move
     - Strike

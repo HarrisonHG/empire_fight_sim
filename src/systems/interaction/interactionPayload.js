@@ -8,7 +8,7 @@ import { CALLS } from '../calls.js';
  */
 export default class InteractionPayload {
   constructor(call, value, offensive) {
-    if (!CALLS[call]) {
+    if (call && !CALLS[call]) {
       throw new Error(`Call "${call}" is not defined in CALLS.`);
     }
     this.call = call; // The call being made

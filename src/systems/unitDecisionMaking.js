@@ -24,11 +24,9 @@ import { STATUS, LIMB_HEALTH } from '../systems/status.js';
 export const CONDITIONS = {
   RANGE: {
     description: "Check if the target is within range",
-    handler: (unit) => {
+    handler: (unit) =>
       CONDITIONS.TARGET_EXISTS.handler(unit) &&
-      unit.targetUnit.range > 0 &&
       unit.isTargetInRange()
-    }
   },
   TARGET_EXISTS: {
     description: "Check if a target exists",
@@ -49,14 +47,19 @@ export const CONDITIONS = {
       CONDITIONS.HAVE_2_LEGS.handler(unit) &&
       !unit.statuses.includes(STATUS.PARALYSED) &&
       !unit.statuses.includes(STATUS.ENTANGLED) &&
-      !unit.statuses.includes(STATUS.DYING) &&
-      !unit.statuses.includes(STATUS.DEAD)
+      !unit.statuses.includes(STATUS.DYING)
+      // Note: Do not include IS_DEAD, as we need to be able to move to a respawn point
   },
   CAN_ATTACK: {
     description: "Check if the agent can attack",
     handler: (unit) =>
       CONDITIONS.HAVE_WEAPON.handler(unit) &&
       CONDITIONS.HAVE_1_ARM.handler(unit)
+  },
+  IS_DEAD: {
+    description: "Check if the agent is dead",
+    handler: (unit) =>
+      unit.isAlive === false
   },
   HAVE_WEAPON: {
     description: "Check if the agent has a weapon",
@@ -85,6 +88,17 @@ export const CONDITIONS = {
     handler: (unit) =>
       unit.limbHealth.leftLeg === LIMB_HEALTH.OK ||
       unit.limbHealth.rightLeg === LIMB_HEALTH.OK
+  },
+  NEAR_RESPAWN_POINT: {
+    description: "Check if the agent is near a respawn point",
+    handler: (unit) =>
+      unit.team.respawnPoints.some(respawnPoint => {
+        const distance = Phaser.Math.Distance.Between(
+          unit.x, unit.y,
+          respawnPoint.x, respawnPoint.y
+        );
+        return distance < respawnPoint.width;
+      })
   }
 };
 
@@ -123,55 +137,73 @@ export class Motion {
  */
 export const MOTIONS = {
     CHOOSE_TARGET: new Motion(
-        "Choose Target",
-        "Unit selects a target to engage with.",
-        1, // ms. Do something on the next frame
-        (unit, time, delta) => {
-          // The unit will decide which target to engage with based on its current state.
-          return
-        }
+      "Choose Target",
+      "Unit selects a target to engage with.",
+      1, // ms. Do something on the next frame
+      (unit, time, delta) => {
+        // The unit will decide which target to engage with based on its current state.
+        return
+      }
     ),
     MOVE_TO: new Motion(
-        "Move To",
-        "Unit moves towards a specified position in the world.",
-        500, // ms. Moving to a target means you should think actively.
-        (unit, time, delta) => {
-          unit.moveTo(unit.targetUnit.x, unit.targetUnit.y);
-        }
+      "Move To",
+      "Unit moves towards a specified position in the world.",
+      500, // ms. Moving to a target means you should think actively.
+      (unit, time, delta) => {
+        unit.moveTo(unit.targetUnit.x, unit.targetUnit.y);
+      }
     ),
     STEP_FORWARD: new Motion(
-        "Step Forward",
-        "Unit steps forward to close distance or reposition.",
-        200, // ms. One short step.
-        (unit, time, delta) => {
-          unit.moveTo(unit.targetUnit.x, unit.targetUnit.y); // TODO: Handle single step
-        }
+      "Step Forward",
+      "Unit steps forward to close distance or reposition.",
+      200, // ms. One short step.
+      (unit, time, delta) => {
+        unit.moveTo(unit.targetUnit.x, unit.targetUnit.y); // TODO: Handle single step
+      }
     ),
     STEP_BACKWARD: new Motion(
-        "Step Backward",
-        "Unit steps backward to create distance or evade.",
-        200, // ms. One short step.
-        (unit, time, delta) => {
-          console.log("RETREAT HAS NOT BEEN IMPLEMENTED. ONLY CHARGE!") // TODO: Handle single step back
-        }
+      "Step Backward",
+      "Unit steps backward to create distance or evade.",
+      200, // ms. One short step.
+      (unit, time, delta) => {
+        console.log("RETREAT HAS NOT BEEN IMPLEMENTED. ONLY CHARGE!") // TODO: Handle single step back
+      }
     ),
     STRIKE: new Motion(
-        "Strike",
-        "Unit swings or thrusts their melee weapon.",
-        1000, // ms. Max DPS in Empire is 1 second
-        (unit, time, delta) => {
-          unit.strike();
-        }
+      "Strike",
+      "Unit swings or thrusts their melee weapon.",
+      1000, // ms. Max DPS in Empire is 1 second
+      (unit, time, delta) => {
+        unit.strike();
+      }
     ),
     IDLE: new Motion(
-        "Idle",
-        "Unit remains in a neutral stance, ready for action.",
-        2000, // ms. 2 seconds to react while relaxed
-        (unit, time, delta) => {
-          // Idle motion does nothing, but can be used to reset state or animations
-          unit.standStill();
-        }
+      "Idle",
+      "Unit remains in a neutral stance, ready for action.",
+      2000, // ms. 2 seconds to react while relaxed
+      (unit, time, delta) => {
+        // Idle motion does nothing, but can be used to reset state or animations
+        unit.standStill();
+      }
     ),
+    DEAD: new Motion(
+      "Dead",
+      "Unit is dead and cannot perform any actions.",
+      10_000, // ms. Wait a while before considering respawn
+      (unit, time, delta) => {
+        // Dead motion does nothing, but can be used to reset state or animations
+        unit.layDead();
+      }
+    ),
+    RESPAWN: new Motion(
+      "Respawn",
+      "Unit comes alive again.",
+      500, // ms
+      (unit, time, delta) => {
+        // Respawn motion does nothing, but can be used to reset state or animations
+        unit.respawn();
+      }
+    )
 };
 
 /**
@@ -211,6 +243,18 @@ export const ACTIONS = {
         [MOTIONS.IDLE],
         []
     ),
+    STAY_DEAD: new Action(
+        "Stay Dead",
+        "Unit remains dead and cannot perform any actions.",
+        [MOTIONS.DEAD],
+        [CONDITIONS.IS_DEAD]
+    ),
+    RESPAWN: new Action(
+        "Respawn",
+        "Unit respawns when in range of a respawn point.",
+        [MOTIONS.RESPAWN],
+        [CONDITIONS.IS_DEAD, CONDITIONS.NEAR_RESPAWN_POINT]
+    )
 };
 
 /**
@@ -220,6 +264,16 @@ export const ACTIONS = {
  * interupted by thoughts and emergency decisions by the unit.
  */
 export class Stance {
+  /**
+   * Creates a new stance.
+   * @param {string} name - The name of the stance.
+   * @param {string} description - A brief description of the stance.
+   * @param {Array<Action>} primaryActions - Actions that this stance wants to achieve.
+   * @param {boolean} enforcePrimaryActionOrder - Whether the primary actions should be enforced
+   * in order.
+   * @param {Array<Action>} supportingActions - Supporting actions that help achieve the primary actions
+   * @param {string|null} faceImage - Optional image tag to represent the stance visually.
+   */
   constructor(name, description, primaryActions = [], enforcePrimaryActionOrder = true, 
       supportingActions = [], faceImage = null) {
     this.name = name; // Name of the stance
@@ -233,19 +287,43 @@ export class Stance {
 
 export const STANCES = {
     CHARGE: new Stance(
-        "Charge",
-        "Unit runs in to attack the target quickly with little regard for personal safety.",
-        [ACTIONS.ATTACK],
-        false,
-        [ACTIONS.MOVE_TO_TARGET],
-        'angry_shout'
+      "Charge",
+      "Unit runs in to attack the target quickly with little regard for personal safety.",
+      [ACTIONS.ATTACK],
+      false,
+      [ACTIONS.MOVE_TO_TARGET],
+      'angry_shout'
     ),
     RELAXED: new Stance(
-        "Relaxed",
-        "Unit is in a neutral state, regaining energy and morale until something comes near.",
-        [ACTIONS.STAND],
-        false,
-        [],
-        'smile'
+      "Relaxed",
+      "Unit is in a neutral state, regaining energy and morale until something comes near.",
+      [ACTIONS.STAND],
+      false,
+      [],
+      'smile'
     ),
+    DEAD: new Stance(
+      "Dead",
+      "Unit is dead and cannot perform any actions. They may or may not respawn.",
+      [ACTIONS.STAY_DEAD],
+      false,
+      [],
+      'dead'
+    ),
+    RESPAWN: new Stance(
+      "Respawn",
+      "Unit is dead and walking to a respawn point.",
+      [ACTIONS.RESPAWN],
+      false,
+      [ACTIONS.MOVE_TO_TARGET],
+      'dead'
+    ),
+    RALLY: new Stance(
+      "Rally",
+      "Unit is trying to regroup with its team.",
+      [ACTIONS.MOVE_TO_TARGET],
+      false,
+      [],
+      'smile'
+    )
 };

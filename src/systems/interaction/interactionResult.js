@@ -11,21 +11,14 @@ import { Call, CALLS } from '../calls.js';
 export class InteractionResult {
   /**
    * @param {number} valueRecieved - The value received by the target unit from the interaction.
-   * @param {Unit} callsTaken - The calls taken by the target unit during the interaction.
+   * @param {boolean} callTaken - Whether or not the call was taken (and implied "consumed").
    * @note No need to pass the units in question, as the interactionSystem will know
    *       which units were involved in the interaction. If this all goes async,
    *       we'll need to revisit this design.
    * @warning For future Harrison - Expect counter calls to be added here!
    */
-    constructor(valueRecieved, callsTaken) {
-        if (typeof valueRecieved !== 'number') {
-        throw new Error("valueRecieved must be a number.");
-        }
-        if (!(callsTaken instanceof Unit)) {
-        throw new Error("callsTaken must be an instance of Unit.");
-        }
-    
-        this.valueRecieved = valueRecieved; // The value received by the target unit
-        this.callsTaken = callsTaken; // The calls taken by the target unit
+    constructor(valueRecieved, callTaken) {    
+        this.valueRecieved = valueRecieved;
+        this.callTaken = callTaken;
     }
   }

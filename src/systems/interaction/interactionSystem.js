@@ -20,7 +20,7 @@ export const InteractionSystem = {
    * @param {InteractionPayload} payload - The payload containing the interaction details.
    * @returns {InteractionResult} - The result of the interaction.
    */
-   interact(sourceUnit, targetPayload, payload) {
+   interact(sourceUnit, targetUnit, payload) {
     
     if (!(sourceUnit instanceof Unit)) {
       throw new Error("sourceUnit must be an instance of Unit.");
@@ -32,7 +32,7 @@ export const InteractionSystem = {
       throw new Error("Invalid payload for interaction.");
     }
 
-    return InteractionResult = targetUnit.recieveInteraction(payload);
+    return targetUnit.recieveInteraction(payload);
   }
 
   // TODO: If you want to add external effects from this interaction, such as a random

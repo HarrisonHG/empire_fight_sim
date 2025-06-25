@@ -11,7 +11,7 @@ const config = {
   physics: {
     default: 'arcade',
     arcade: {
-      debug: true,
+      debug: false,
       debugBodyColor: 0xff00ff,
     }
   }
@@ -20,4 +20,4 @@ const config = {
 const game = new Phaser.Game(config);
 game.scene.start('BattleScene', { sceneWidth: config.width, sceneHeight: config.height });
 
-console.log('🎉 Empite battle sim (bundled) is up! 🎉');
+console.log('🎉 Empire battle sim (bundled) is up! 🎉');
