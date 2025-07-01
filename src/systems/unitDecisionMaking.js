@@ -1,4 +1,5 @@
 import Unit from '../entities/Unit.js';
+import RespawnPoint from '../entities/landmarks/RespawnPoint.js';
 import { STATUS, LIMB_HEALTH } from '../systems/status.js';
 
 /**
@@ -148,7 +149,7 @@ export const MOTIONS = {
     MOVE_TO: new Motion(
       "Move To",
       "Unit moves towards a specified position in the world.",
-      500, // ms. Moving to a target means you should think actively.
+      50, // ms. Moving to a target means you should think actively.
       (unit, time, delta) => {
         unit.moveTo(unit.targetUnit.x, unit.targetUnit.y);
       }
@@ -156,7 +157,7 @@ export const MOTIONS = {
     STEP_FORWARD: new Motion(
       "Step Forward",
       "Unit steps forward to close distance or reposition.",
-      200, // ms. One short step.
+      50, // ms. One short step.
       (unit, time, delta) => {
         unit.moveTo(unit.targetUnit.x, unit.targetUnit.y); // TODO: Handle single step
       }
@@ -164,7 +165,7 @@ export const MOTIONS = {
     STEP_BACKWARD: new Motion(
       "Step Backward",
       "Unit steps backward to create distance or evade.",
-      200, // ms. One short step.
+      50, // ms. One short step.
       (unit, time, delta) => {
         console.log("RETREAT HAS NOT BEEN IMPLEMENTED. ONLY CHARGE!") // TODO: Handle single step back
       }
@@ -186,6 +187,24 @@ export const MOTIONS = {
         unit.standStill();
       }
     ),
+    IDLE_IMPATIENT: new Motion(
+      "Idle Impatiently ",
+      "Unit is in a state of impatience, ready to act quickly.",
+      100, // ms. 0.1 seconds to react while impatient
+      (unit, time, delta) => {
+        // Impatient idle motion does nothing, but can be used to reset state or animations
+        unit.standStill();
+      }
+    ),
+    IDLE_FOREVER: new Motion(
+      "Idle Forever",
+      "Unit remains idle indefinitely, waiting for a command or action.",
+      Infinity, // Wait forever. This is a special case for units that are not active.
+      (unit, time, delta) => {
+        // Idle forever motion does nothing, but can be used to reset state or animations
+        unit.standStill();
+      }
+    ),
     DEAD: new Motion(
       "Dead",
       "Unit is dead and cannot perform any actions.",
@@ -195,13 +214,15 @@ export const MOTIONS = {
         unit.layDead();
       }
     ),
-    RESPAWN: new Motion(
+    TOUCH_RESPAWN: new Motion(
       "Respawn",
-      "Unit comes alive again.",
-      500, // ms
+      "Unit signals to the respawn point that it's ready to go.",
+      1,
       (unit, time, delta) => {
         // Respawn motion does nothing, but can be used to reset state or animations
-        unit.respawn();
+        if (unit.targetUnit instanceof RespawnPoint) {
+          unit.targetUnit.enterWaitingArea(unit);
+        }
       }
     )
 };
@@ -237,10 +258,16 @@ export const ACTIONS = {
         [CONDITIONS.TARGET_EXISTS, CONDITIONS.TARGET_IN_LOS, CONDITIONS.HAVE_WEAPON, 
             CONDITIONS.CAN_ATTACK, CONDITIONS.RANGE]
     ),
+    RELAX: new Action(
+        "Stand",
+        "Unit stands still and takes a moment to relax.",
+        [MOTIONS.IDLE],
+        []
+    ),
     STAND: new Action(
         "Stand",
         "Unit stands still, ready for action.",
-        [MOTIONS.IDLE],
+        [MOTIONS.IDLE_IMPATIENT],
         []
     ),
     STAY_DEAD: new Action(
@@ -251,8 +278,8 @@ export const ACTIONS = {
     ),
     RESPAWN: new Action(
         "Respawn",
-        "Unit respawns when in range of a respawn point.",
-        [MOTIONS.RESPAWN],
+        "Unit waits at a respawn point to be unleashed once more.",
+        [MOTIONS.TOUCH_RESPAWN, MOTIONS.IDLE_FOREVER],
         [CONDITIONS.IS_DEAD, CONDITIONS.NEAR_RESPAWN_POINT]
     )
 };
@@ -297,7 +324,7 @@ export const STANCES = {
     RELAXED: new Stance(
       "Relaxed",
       "Unit is in a neutral state, regaining energy and morale until something comes near.",
-      [ACTIONS.STAND],
+      [ACTIONS.RELAX],
       false,
       [],
       'smile'
@@ -314,7 +341,7 @@ export const STANCES = {
       "Respawn",
       "Unit is dead and walking to a respawn point.",
       [ACTIONS.RESPAWN],
-      false,
+      true,
       [ACTIONS.MOVE_TO_TARGET],
       'dead'
     ),

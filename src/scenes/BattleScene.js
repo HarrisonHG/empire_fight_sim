@@ -29,13 +29,18 @@ export default class BattleScene extends Phaser.Scene {
     // Load assets here if needed
     // this.load.image('example', 'path/to/example.png');
     this.load.image('empty',         'assets/unit/empty.png');
+
     this.load.image('respawn_point',  'assets/building/respawn_flag.png');
     this.load.image('rally_point',  'assets/building/respawn_flag.png');
+
     this.load.image('body',         'assets/unit/body.png');
     this.load.image('smile',        'assets/unit/smile.png');
     this.load.image('dead',         'assets/unit/dead.png');
     this.load.image('angry_shout',  'assets/unit/angry_shout.png');
     this.load.image('unit',         'assets/unit.png'); // Backup
+
+    this.load.image('sword',        'assets/equipment/weapons/sword.png');
+
     this.load.once('complete', () => {
       console.log('BattleScene assets preloaded');
     });
@@ -64,15 +69,7 @@ export default class BattleScene extends Phaser.Scene {
 
     // Create an array to hold the units
     this.units = {
-      unit1: new Unit(this, 100, 100, 40, 100),
-      unit2: new Unit(this, 200, 100, 40, 150),
-      unit3: new Unit(this, 300, 100, 40, 200)
     };
-
-    // Add units to teams
-    this.teams.playerDawn.addUnit(this.units.unit1);
-    this.teams.playerNevvar.addUnit(this.units.unit2);
-    this.teams.monsterJotun.addUnit(this.units.unit3);
 
     // Object pooling setup, including physics
     this.unitGroup = this.physics.add.group({ runChildUpdate: true });
@@ -111,6 +108,6 @@ export default class BattleScene extends Phaser.Scene {
    * @param {number} delta - Time since last frame in milliseconds
    */
   update(time, delta) {
-
+    
   }
 }

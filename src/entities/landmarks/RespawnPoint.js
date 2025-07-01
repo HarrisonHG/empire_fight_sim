@@ -48,5 +48,31 @@ export default class RespawnPoint extends phaser.GameObjects.Zone {
         this.text.setPosition(x + 9, y - 7);
         this.text.setFontSize(8);
         scene.add.existing(this);
+        
+        // Units will wait here for a while until respawning in waves
+        this.WAITING_AREA_SIZE = 2;
+        this.waitingArea = [];
+    }
+
+    /**
+     * Add a unit to the queue of units that are waiting to respawn at this rally point.
+     * @param {Phaser.GameObjects.Sprite} unit - The unit to add to the
+     */
+    enterWaitingArea(unit) {
+
+        if (!this.waitingArea.includes(unit)) {
+            this.waitingArea.push(unit);
+        }
+
+        if (this.waitingArea.length >= this.WAITING_AREA_SIZE) {
+
+            console.debug(`RallyPoint: ${this.team} waiting area is full, respawning all units.`);
+            for (const u of this.waitingArea) {
+                if (typeof u.respawn === 'function') {
+                    u.respawn();
+                }
+            }
+            this.waitingArea = [];
+        }
     }
 }

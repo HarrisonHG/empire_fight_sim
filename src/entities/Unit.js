@@ -7,6 +7,7 @@ import InteractionPayload from '../systems/interaction/interactionPayload.js';
 import { InteractionResult } from '../systems/interaction/interactionResult.js';
 import { InteractionSystem } from '../systems/interaction/interactionSystem.js';
 import { CALLS } from '../systems/calls.js';
+import OneHanded from './equipment/weapons/OneHanded.js';
 
 /**
  * Represents one "person" on the field.
@@ -44,7 +45,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.ATTACK_COOLDOWN = MOTIONS.STRIKE.duration; // Cooldown for attacks in milliseconds
 
     // Statistics and statuses
-    this.range = size * 1.5; // How far can we reach with our attacks
+    this.maxHp = 2;
+    this.hp = this.maxHp;
     this.limbHealth = {
       leftArm: LIMB_HEALTH.OK,
       rightArm: LIMB_HEALTH.OK,
@@ -53,15 +55,17 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
     this.statuses = []; // Array to hold statuses like 'paralysed', 'entangled', etc.
     this.isAlive = true; // Is the unit alive? Used for health checks and interactions.
-
+    this.equipment = []; // Array to hold usable equipment like weapons, shields, etc.
+    this.equipment = [
+      new OneHanded(scene, this.x-5, this.y+20, 'sword', this) // Add a sword to the unit's equipment
+    ]
+    this.currentWeapon = this.equipment[0]; // Default to the first weapon in the equipment array
+    
     // Gameplay properties
     this.team = null;
     this.id = Phaser.Utils.String.UUID(); // Unique identifier for the unit
 
     // Init visuals
-    // TODO: The below section is being commented out for testing.
-    // If stuff breaks visually, reinvestigate.
-    // this.setOrigin(0.5, 0.5); // Center the sprite
     this.setDisplaySize(size, size);
     this.name = this.id.substring(0, 4);
 
@@ -69,7 +73,6 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
     scene.add.existing(this);
     this.body.setCircle(size*1.6);
-    //this.body.setOffset((size/2)+5, (size/2)+5); // Center the circle
     this.body.setBounce(1);
     this.body.setCollideWorldBounds(true);
 
@@ -89,7 +92,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       // Add a translucent circle to visualize the unit's range if debug is on
       this.reachCircle = scene.add.graphics();
       this.reachCircle.fillStyle(Phaser.Display.Color.HexStringToColor(this.colour).color, 0.15);
-      this.reachCircle.fillCircle(0, 0, this.range);
+      this.reachCircle.fillCircle(0, 0, this.currentWeapon.REACH);
       this.reachCircle.setDepth(-1); // Behind the unit
       this.viz.add(this.reachCircle);
 
@@ -112,9 +115,6 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       strokeThickness: 0
     }).setOrigin(0.5, 0.5).setDepth(2);
     this.viz.add(this.nameText);
-
-    this.maxHp = 2;
-    this.hp = this.maxHp;
   }
 
   /**
@@ -123,26 +123,15 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    * @param {number} delta - The time since the last update in milliseconds.
    */
   update(time, delta) {
-    const pointer = this.scene.input.activePointer;
-
-    // // if pointer is down *and* over the world
-    // if (pointer.isDown && pointer.worldX && pointer.worldY) {
-    //   this.moveTo(pointer.worldX, pointer.worldY)
-    // }
-    // else {
-    //   this.standStill();
-    // }
+    const pointer = this.scene.input.activePointer;   
 
     this.rethinkTimer -= delta;
 
     if (this.rethinkTimer <= 0 || this.currentMotion === null) {
       this.chooseNextMotion();
     }
-    this.currentMotion.execute(this, time, delta);
 
-    if (this.currentMotion && typeof this.currentMotion.execute === 'function') {
-      this.currentMotion.execute(this, time, delta);
-    }
+    this.currentMotion.execute(this, time, delta);
 
     // No matter the desired movement, we need to check bounds
     // to ensure the unit stays within the world bounds.
@@ -219,6 +208,17 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
     this.team = team;
     this.setColour(team.colour);
+  }
+
+  /**
+   * If viz is set, return its rotation. If not, return the unit's rotation.
+   * @returns {number} The rotation of the unit or its visual representation.
+   */
+  getRotation() {
+    if (this.baseVisual && this.baseVisual.rotation !== undefined) {
+      return this.baseVisual.rotation;
+    }
+    return this.rotation;
   }
 
   // --- THINKING ---
@@ -412,7 +412,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     // Who's conditions are met and not already completed.
     if (!this.currentStance || !this.currentStance.primaryActions.length) {
       console.debug(`Unit ${this.id} has no primary actions in current stance: ${this.currentStance.name}`);
-      this.currentAction = ACTIONS.STAND; // Default to standing still
+      this.currentAction = ACTIONS.RELAX; // Default to standing still
       return this.currentAction;
     }
 
@@ -435,7 +435,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
 
     // If no actions are available, default to standing still
-    this.currentAction = ACTIONS.STAND;
+    this.currentAction = ACTIONS.RELAX;
     console.debug(`Unit ${this.id} has no valid actions, defaulting to stand.`);
   }
 
@@ -478,7 +478,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     // Calculate distance to target unit
     let distance = Phaser.Math.Distance.Between(this.x, this.y, targetUnit.x, targetUnit.y);
     distance -= targetUnit.displayWidth / 2; // Adjust for the target unit's size
-    return distance <= this.range;
+    return distance <= this.currentWeapon.REACH;
   }
 
   // --- MOVEMENT ---
@@ -564,6 +564,9 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
+    this.turnToFace(target.x, target.y); // Face the target before striking
+    this.currentWeapon.thrust();
+
     const response = InteractionSystem.interact(this, target, new InteractionPayload(null, 1, true));    
     console.debug(`Unit ${this.id} received interaction result: ${response.valueRecieved} with call taken: ${response.callTaken}`);
   
@@ -571,7 +574,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     // TODO: Maybe handle stepping back and forth. But for now, just stand still.
     this.completedMotions.push(MOTIONS.STRIKE); // Mark the strike motion as completed
     this.currentMotion = MOTIONS.IDLE; // Reset current motion after striking
-    this.standStill();
+    
   }
 
   /**
@@ -601,6 +604,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.targetUnit = null; // Clear the target unit (which was the respawn point)
     this.standStill(); // Stop any movement
     this.chooseStance()
+    this.rethinkTimer = 0; // Reset rethink to act immediately
+    console.debug(`Unit ${this.id} has respawned.`);
   }
 
   /**
@@ -685,6 +690,12 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
     
     this.nameText.setPosition(0, this.displayHeight - 10);
+
+    for (const item of this.equipment) {
+      if (typeof item.update === 'function') {
+        item.update();
+      }
+    }
   }
 
 }
