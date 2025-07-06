@@ -40,6 +40,10 @@ export default class BattleScene extends Phaser.Scene {
     this.load.image('unit',         'assets/unit.png'); // Backup
 
     this.load.image('sword',        'assets/equipment/weapons/sword.png');
+    this.load.image('spear',        'assets/equipment/weapons/spear.png');
+    this.load.image('bigAxe',       'assets/equipment/weapons/bigAxe.png');
+
+    this.load.image('shield',       'assets/equipment/defence/shield.png');
 
     this.load.once('complete', () => {
       console.log('BattleScene assets preloaded');

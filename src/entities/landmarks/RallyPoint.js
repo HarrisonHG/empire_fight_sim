@@ -12,7 +12,8 @@ export default class RallyPoint extends phaser.GameObjects.Zone {
         super(scene, x, y, 32, 32);
         this.team = team;
         this.setOrigin(0.5, 0.5);
-        this.setSize(100, 100);
+        this.size = 100;
+        this.setSize(this.size, this.size);
 
         // Create a sprite for the rally point
         this.sprite = scene.add.sprite(x, y, 'rally_point');

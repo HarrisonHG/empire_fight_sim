@@ -8,6 +8,9 @@ import { InteractionResult } from '../systems/interaction/interactionResult.js';
 import { InteractionSystem } from '../systems/interaction/interactionSystem.js';
 import { CALLS } from '../systems/calls.js';
 import OneHanded from './equipment/weapons/OneHanded.js';
+import Spear from './equipment/weapons/Spear.js';
+import TwoHanded from './equipment/weapons/TwoHanded.js';
+import Shield from './equipment/defence/Shield.js';
 
 /**
  * Represents one "person" on the field.
@@ -30,8 +33,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.moveSpeed = speed || 200; // Default speed in pixels per second
     this.tryingToMove = false;
     this.acceleration = 800;
-    this.SLOW_MOVEMENT_DISTANCE = 50; // Distance at which to start slowing down
-    this.CLOSE_ENOUGH = 10 // How close do we need to be to stop moving?
+    this.SLOW_MOVEMENT_DISTANCE = size; // Distance at which to start slowing down
+    this.CLOSE_ENOUGH = size/2
 
     // Decision making
     this.currentStance = STANCES.RELAXED; // Default stance
@@ -56,10 +59,27 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.statuses = []; // Array to hold statuses like 'paralysed', 'entangled', etc.
     this.isAlive = true; // Is the unit alive? Used for health checks and interactions.
     this.equipment = []; // Array to hold usable equipment like weapons, shields, etc.
+    const weaponClasses = [OneHanded, Spear, TwoHanded];
+    //const weaponClasses = [Spear];
+    let weaponRoll = Math.floor(Math.random() * weaponClasses.length);
+    const weaponClass = weaponClasses[weaponRoll];
     this.equipment = [
-      new OneHanded(scene, this.x-5, this.y+20, 'sword', this) // Add a sword to the unit's equipment
+      new weaponClass(scene, this.x-5, this.y+20, this)
     ]
+    if (weaponClass === OneHanded) {
+      this.equipment.push(new Shield(scene, this.x+5, this.y+20, this));
+    }   
     this.currentWeapon = this.equipment[0]; // Default to the first weapon in the equipment array
+    
+    // TODO: SKill levels n shit!
+    this.maxParryRate = 0.8
+    this.minParryRate = 0.1
+    this.parryRecoveryRate = 0.3 // Percentage of how much "parry rate" is recovered per second.
+    if (this.equipment.some(eq => eq instanceof Shield)) {
+      this.parryRecoveryRate += 0.2;
+    }
+    this.currentParryRate = this.minParryRate; // Who spawns into life with perfect defence?
+    this.parryDamage = 0.5 // How much parry chance "damage" is taken when struck
     
     // Gameplay properties
     this.team = null;
@@ -89,7 +109,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.viz.add([ this.baseVisual, this.faceVisual ]);
 
     if ( scene.sys.game.config.physics.arcade.debug ) {
-      // Add a translucent circle to visualize the unit's range if debug is on
+      // Add a translucent circle to visualize the unit's range
       this.reachCircle = scene.add.graphics();
       this.reachCircle.fillStyle(Phaser.Display.Color.HexStringToColor(this.colour).color, 0.15);
       this.reachCircle.fillCircle(0, 0, this.currentWeapon.REACH);
@@ -103,18 +123,27 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
         size, 4, 0xff0000
       ).setOrigin(0, 0.5);
       this.viz.add([this.barBG, this.bar]);
+
+      // Parry bar (green) to visualize current parry rate
+      this.parryBarBG = scene.add.rectangle(0, -size/2 - 12, size, 4, 0x003300);
+      this.parryBar = scene.add.rectangle(
+        -size/2, -size/2 - 12,
+        size, 4, 0x00ff00
+      ).setOrigin(0, 0.5);
+      this.viz.add([this.parryBarBG, this.parryBar]);
+
+      // Add a text label for the unit's name, centered on the unit
+      this.nameText = scene.add.text(0, 0, this.name, {
+        fontFamily: 'Arial',
+        fontSize: Math.round(size / 2.5),
+        color: '#000000',
+        align: 'center',
+        stroke: '#ffffff',
+        strokeThickness: 0
+      }).setOrigin(0.5, 0.5).setDepth(2);
+      this.viz.add(this.nameText);
     }
 
-    // Add a text label for the unit's name, centered on the unit
-    this.nameText = scene.add.text(0, 0, this.name, {
-      fontFamily: 'Arial',
-      fontSize: Math.round(size / 2.5),
-      color: '#000000',
-      align: 'center',
-      stroke: '#ffffff',
-      strokeThickness: 0
-    }).setOrigin(0.5, 0.5).setDepth(2);
-    this.viz.add(this.nameText);
   }
 
   /**
@@ -162,6 +191,13 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       this.body.setVelocityY(0);
     }
 
+    if (this.currentParryRate < this.maxParryRate) {
+      this.currentParryRate = Math.min(
+        this.maxParryRate,
+        this.currentParryRate + this.parryRecoveryRate * (delta / 1000)
+      );
+    }
+    
     this.syncVisuals()
   }
 
@@ -253,6 +289,31 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
+   * Choose the closest unit on an enemy team.
+   * @returns {Unit|null} The closest enemy unit, or null if no enemies are
+   * found.
+   */
+  chooseClosestEnemyUnit() {
+    // If there are enemy units in the world, set stance to CHARGE
+    const enemyUnits = this.scene.unitGroup.getChildren().filter(targetUnit => 
+      this.team.getRelationship(targetUnit.team.name) == TEAM_RELATIONSHIP.ENEMY &&
+      targetUnit.isAlive && // Only consider alive units
+      targetUnit !== this && // Don't target ourselves
+      Phaser.Math.Distance.Between(this.x, this.y, targetUnit.x, targetUnit.y) < 1000 // debug value
+    );
+    if (enemyUnits.length > 0) {
+      this.targetUnit = this.chooseClosestUnit(enemyUnits);
+      if (this.targetUnit) {
+        console.debug(`Unit ${this.id} targeting enemy unit: ${this.targetUnit.id}`);
+        return this.targetUnit;
+      } else {
+        console.debug(`Unit ${this.id} could not find a target unit.`);
+        return null;
+      }
+    }
+  }
+
+  /**
    * Choose a stance for the unit to adopt.
    * This should be considered a luxury position for the unit. Most of the time,
    * unit should be assigned a stance by other units, or commanders etc.
@@ -281,20 +342,27 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
 
     // If there are enemy units in the world, set stance to CHARGE
-    const enemyUnits = this.scene.unitGroup.getChildren().filter(targetUnit => 
-      this.team.getRelationship(targetUnit.team.name) == TEAM_RELATIONSHIP.ENEMY &&
-      targetUnit.isAlive && // Only consider alive units
-      targetUnit !== this && // Don't target ourselves
-      Phaser.Math.Distance.Between(this.x, this.y, targetUnit.x, targetUnit.y) < 1000 // debug value
-    );
-    if (enemyUnits.length > 0) {
+    // const enemyUnits = this.scene.unitGroup.getChildren().filter(targetUnit => 
+    //   this.team.getRelationship(targetUnit.team.name) == TEAM_RELATIONSHIP.ENEMY &&
+    //   targetUnit.isAlive && // Only consider alive units
+    //   targetUnit !== this && // Don't target ourselves
+    //   Phaser.Math.Distance.Between(this.x, this.y, targetUnit.x, targetUnit.y) < 1000 // debug value
+    // );
+    // if (enemyUnits.length > 0) {
+    //   this.setStance(STANCES.CHARGE);
+    //   this.targetUnit = this.chooseClosestUnit(enemyUnits);
+    //   if (this.targetUnit) {
+    //     console.debug(`Unit ${this.id} targeting enemy unit: ${this.targetUnit.id}`);
+    //   } else {
+    //     console.debug(`Unit ${this.id} could not find a target unit.`);
+    //   }
+    //   return;
+    // }
+
+    const closestEnemyUnit = this.chooseClosestEnemyUnit();
+    if (closestEnemyUnit) {
       this.setStance(STANCES.CHARGE);
-      this.targetUnit = this.chooseClosestUnit(enemyUnits);
-      if (this.targetUnit) {
-        console.debug(`Unit ${this.id} targeting enemy unit: ${this.targetUnit.id}`);
-      } else {
-        console.debug(`Unit ${this.id} could not find a target unit.`);
-      }
+      this.targetUnit = closestEnemyUnit;
       return;
     }
 
@@ -503,11 +571,34 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    */
   moveTo(x, y) {
     
-    // Calculate distance to target
+    let closeEnough = this.CLOSE_ENOUGH;
+
+    // No point chasing a dead unit
+    if (this.targetUnit instanceof Unit) {
+      if (!this.targetUnit.isAlive && 
+          this.targetUnit.team &&
+          this.team.getRelationship(this.targetUnit.team.name) === TEAM_RELATIONSHIP.ENEMY &&
+          this.currentStance === STANCES.CHARGE) {
+        // Reapplying this stance should trigger the unit to choose a new target
+        console.debug(`Unit ${this.id} is chasing a dead enemy unit, rethinking`);
+        const closestEnemyUnit = this.chooseClosestEnemyUnit();
+        if (closestEnemyUnit) {
+          this.targetUnit = closestEnemyUnit;
+          this.setStance(STANCES.CHARGE);
+        }
+      }
+
+      closeEnough = this.targetUnit.displayWidth / 2 + this.CLOSE_ENOUGH;
+    }
+    else if (this.targetUnit instanceof Phaser.GameObjects.Zone) {
+      closeEnough = this.targetUnit.size / 2 + this.CLOSE_ENOUGH;
+    }
+
     const distance = Phaser.Math.Distance.Between(this.x, this.y, x, y);
-    if (distance < this.CLOSE_ENOUGH) {
+    if (distance < closeEnough) {
       this.standStill();
-      return; // We're close enough, no need to move
+      this.chooseNextMotion();
+      return; 
     }
 
     // Calculate max speed achievable
@@ -567,14 +658,22 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.turnToFace(target.x, target.y); // Face the target before striking
     this.currentWeapon.thrust();
 
-    const response = InteractionSystem.interact(this, target, new InteractionPayload(null, 1, true));    
-    console.debug(`Unit ${this.id} received interaction result: ${response.valueRecieved} with call taken: ${response.callTaken}`);
+    // Max parry rate is reduced while the unit is striking.
+    let oldMaxParryRate = this.maxParryRate;
+    this.maxParryRate /= 2;
+    this.currentParryRate = Math.min(this.currentParryRate, this.maxParryRate);
+
+    setTimeout(() => {
+      const response = InteractionSystem.interact(this, target, new InteractionPayload(null, 1, true));
+      console.debug(`Unit ${this.id} received interaction result: ${response.valueRecieved} with call taken: ${response.callTaken}`);
+      this.maxParryRate = oldMaxParryRate;
+    }, this.currentWeapon.ATTACK_TIME_START);
+
   
     this.rethinkTimer = this.ATTACK_COOLDOWN; // Set cooldown for the next attack
     // TODO: Maybe handle stepping back and forth. But for now, just stand still.
     this.completedMotions.push(MOTIONS.STRIKE); // Mark the strike motion as completed
-    this.currentMotion = MOTIONS.IDLE; // Reset current motion after striking
-    
+    this.currentMotion = MOTIONS.IDLE; // Reset current motion after striking    
   }
 
   /**
@@ -618,9 +717,29 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
     console.debug(`Unit ${this.id} received interaction: ${payload.call} with value: ${payload.value}`);
 
+    let damageTaken = 0;
     if (payload.offensive) {
-      // TODO: Handle the intricacies of combat. for not, just take the hit.
-      this.hp -= payload.value;
+      
+      // Parry attempt an attack
+      const roll = Math.random();
+      if (roll > this.currentParryRate) {
+        this.hp -= payload.value;
+      }
+      else {
+        console.debug(`Unit ${this.id} parried the attack (${roll}<${this.currentParryRate}!`);
+
+        for (const item of this.equipment) {
+          if (typeof item.parry === 'function') {
+            item.parry();
+          }
+        }
+      }
+
+      // Parry or naw, folks get spooked at getting attacked.
+      this.currentParryRate = Math.max(
+        this.minParryRate,
+        this.currentParryRate - this.parryDamage
+      );
     }
 
     // Check if the unit is dead
@@ -661,7 +780,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     // Body is not on the floor and can be stepped over.
     this.body.checkCollision.none = true;
     this.body.enable = false;
-    this.viz.setDepth(-1000); // Move visuals to the back of the scene
+    this.viz.setDepth(-1000);
   }
 
   // --- GRAPHICS ---
@@ -683,13 +802,18 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       const w = this.baseVisual.displayWidth;
       const pct = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
       this.bar.width = w * pct;
-      if (!this.isAlive) {
-        this.bar.setVisible(false); // Hide the health bar if dead
-        this.barBG.setVisible(false); // Hide the health bar background if dead
-      }
+      1
+      this.bar.setVisible(this.isAlive); // Hide the health bar if dead
+      this.barBG.setVisible(this.isAlive); // Hide the health bar background if dead
+
+      // update parry bar width
+      const parryPct = Phaser.Math.Clamp(this.currentParryRate, 0, 1);
+      this.parryBar.width = w * parryPct;
+      this.parryBar.setVisible(this.isAlive); // Hide the parry bar if dead
+      this.parryBarBG.setVisible(this.isAlive); // Hide the parry bar background
+
+      this.nameText.setPosition(0, this.displayHeight - 10);
     }
-    
-    this.nameText.setPosition(0, this.displayHeight - 10);
 
     for (const item of this.equipment) {
       if (typeof item.update === 'function') {

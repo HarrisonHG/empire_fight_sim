@@ -12,7 +12,8 @@ export default class RespawnPoint extends phaser.GameObjects.Zone {
         super(scene, x, y, 32, 32);
         this.team = team;
         this.setOrigin(0.5, 0.5);
-        this.setSize(100, 100);
+        this.size = 100;
+        this.setSize(this.size, this.size);
     
         // Create a sprite for the respawn point
         this.sprite = scene.add.sprite(x, y, 'respawn_point');
@@ -21,9 +22,9 @@ export default class RespawnPoint extends phaser.GameObjects.Zone {
     
         // Create a text label for the respawn point
         this.text = scene.add.text(x, y - 20, team.toUpperCase(), {
-        font: '16px Arial',
-        fill: '#000000',
-        align: 'center'
+            font: '16px Arial',
+            fill: '#000000',
+            align: 'center'
         });
         this.text.setOrigin(0.5, 0.5);
 

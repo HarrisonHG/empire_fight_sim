@@ -100,6 +100,13 @@ export const CONDITIONS = {
         );
         return distance < respawnPoint.width;
       })
+  },
+  TARGET_IS_ALIVE: {
+    description: "Check if the target is alive",
+    handler: (unit) =>
+      unit.targetUnit &&
+      unit.targetUnit instanceof Unit &&
+      unit.targetUnit.isAlive
   }
 };
 
@@ -256,7 +263,7 @@ export const ACTIONS = {
         "Unit attacks a target with a melee weapon.",
         [MOTIONS.CHOOSE_TARGET, MOTIONS.STRIKE],
         [CONDITIONS.TARGET_EXISTS, CONDITIONS.TARGET_IN_LOS, CONDITIONS.HAVE_WEAPON, 
-            CONDITIONS.CAN_ATTACK, CONDITIONS.RANGE]
+            CONDITIONS.CAN_ATTACK, CONDITIONS.RANGE, CONDITIONS.TARGET_IS_ALIVE], 
     ),
     RELAX: new Action(
         "Stand",
