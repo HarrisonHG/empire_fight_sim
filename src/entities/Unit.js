@@ -7,10 +7,12 @@ import InteractionPayload from '../systems/interaction/interactionPayload.js';
 import { InteractionResult } from '../systems/interaction/interactionResult.js';
 import { InteractionSystem } from '../systems/interaction/interactionSystem.js';
 import { CALLS } from '../systems/calls.js';
+
 import OneHanded from './equipment/weapons/OneHanded.js';
 import Spear from './equipment/weapons/Spear.js';
 import TwoHanded from './equipment/weapons/TwoHanded.js';
 import Shield from './equipment/defence/Shield.js';
+import Armour from './equipment/armour.js';
 
 /**
  * Represents one "person" on the field.
@@ -58,6 +60,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
     this.statuses = []; // Array to hold statuses like 'paralysed', 'entangled', etc.
     this.isAlive = true; // Is the unit alive? Used for health checks and interactions.
+
+    // Equipment
     this.equipment = []; // Array to hold usable equipment like weapons, shields, etc.
     const weaponClasses = [OneHanded, Spear, TwoHanded];
     //const weaponClasses = [Spear];
@@ -70,6 +74,39 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       this.equipment.push(new Shield(scene, this.x+5, this.y+20, this));
     }   
     this.currentWeapon = this.equipment[0]; // Default to the first weapon in the equipment array
+
+    // Add armour to the unit
+    // (scene, HP, resistCalls, texture, ownerUnit)
+    const armourRoll = Math.floor(Math.random() * 5);
+    switch (armourRoll) {
+      case 1:
+        this.armour = new Armour(scene, 2, [], 'lightArmour', this);
+        break;
+      case 2:
+        this.armour = new Armour(scene, 3, [CALLS.CLEAVE], 'mediumArmour', this);
+        break;
+      case 3:
+        this.armour = new Armour(scene, 4, [CALLS.CLEAVE, CALLS.IMPALE], 'heavyArmour', this);
+        break;
+      case 4:
+        this.armour = new Armour(scene, 2, [], 'magicArmour', this);
+        break;
+      // case 0: no armour
+    }
+    if (this.armour) {
+      // We're not in the business of changing armour mid-battle, so let's just
+      // add the armour's HP to the unit's max HP for the sake of ease.
+      this.maxHp += this.armour.HP;
+      this.hp = this.maxHp; // Set current HP to max HP
+    }
+
+    // Random 20% chance to add a helmet
+    if (this.armour && Math.random() < 0.2) {
+      const helmet = new Armour(scene, 1, [], 'helmet', this);
+      this.equipment.push(helmet);
+      this.maxHp += helmet.HP;
+      this.hp = this.maxHp; // Set current HP to max HP
+    }
     
     // TODO: SKill levels n shit!
     this.maxParryRate = 0.8
@@ -756,9 +793,12 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       this.rethinkTimer = Math.min(this.rethinkTimer, 1000);
     }
 
-    // TODO: the rest of this stuff.
-    // For now, just return a dummy InteractionResult
-    const callTaken = true;
+    let callTaken = true;
+    if (this.armour && this.armour.resists(payload.call)) {
+      console.debug(`Unit ${this.id} resisted the call: ${payload.call}`);
+      callTaken = false;
+    }
+
     const valueRecieved = payload.value;
     return new InteractionResult(valueRecieved, callTaken);
   }
@@ -802,7 +842,6 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       const w = this.baseVisual.displayWidth;
       const pct = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
       this.bar.width = w * pct;
-      1
       this.bar.setVisible(this.isAlive); // Hide the health bar if dead
       this.barBG.setVisible(this.isAlive); // Hide the health bar background if dead
 
@@ -820,6 +859,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
         item.update();
       }
     }
+
+    this.armour?.update(); // Update armour visuals if it exists
   }
 
 }
