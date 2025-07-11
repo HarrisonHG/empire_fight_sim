@@ -6,7 +6,7 @@ import { Call, CALLS } from "../../systems/calls";
  * Represents armour that units can wear.
  * Generally, armour provides bonus to HP and resists some CALLs.
  */
-export default class Armour extends Phaser.GameObjects.Sprite {
+export default class Armour extends Phaser.GameObjects.Image {
     /**
      * Creates an instance of Armour.
      * @param {Phaser.Scene} scene - The scene to which this armour belongs.
@@ -16,7 +16,7 @@ export default class Armour extends Phaser.GameObjects.Sprite {
      * @param {Unit} ownerUnit - The unit that owns this armour.
      */
     constructor(scene, HP, resistCalls, texture, ownerUnit) {
-        super(scene, ownerUnit.x, ownerUnit.y, texture);
+        super(scene, 0, 0, texture);
         this.scene = scene;
         this.HP = HP; // Health points provided by the armour
         this.resistCalls = resistCalls; // Calls that this armour resists
@@ -29,11 +29,9 @@ export default class Armour extends Phaser.GameObjects.Sprite {
         this.setDisplaySize(ownerUnit.size, ownerUnit.size);
         this.setOrigin(0.5, 0.5);
         this.setDepth(ownerUnit.depth + 1);
-        //this.setScale(ownerUnit.size);
+        //this.setScale(ownerUnit.size);1
         this.setScale(0.3);
-        this.setPosition(ownerUnit.x, ownerUnit.y);2
-        this.scene.add.existing(this);
-        this.ownerUnit = ownerUnit; 
+        this.ownerUnit = ownerUnit;
     }
 
     /**
@@ -42,14 +40,19 @@ export default class Armour extends Phaser.GameObjects.Sprite {
      * @return {boolean} - True if the call is resisted, false otherwise.
      */
     resists(call) {
-        return this.resistCalls.some(resistedCall => resistedCall.name === call.name);
+        for (const resistCall of this.resistCalls) {
+            if (resistCall == call) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    /**
-     * Updates the armour's position to match the owner's position.
-     */
-    update(time, delta) {
-        this.setPosition(this.ownerUnit.x, this.ownerUnit.y);
-        this.setRotation(this.ownerUnit.rotation);
-    }
+    // /**
+    //  * Updates the armour's position to match the owner's position.
+    //  */
+    // update(time, delta) {
+    //     this.setPosition(this.ownerUnit.x, this.ownerUnit.y);
+    //     this.setRotation(this.ownerUnit.rotation);
+    // }
 }

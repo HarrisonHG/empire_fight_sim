@@ -101,10 +101,10 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
 
     // Random 20% chance to add a helmet
+    this.helmet = null;
     if (this.armour && Math.random() < 0.2) {
-      const helmet = new Armour(scene, 1, [], 'helmet', this);
-      this.equipment.push(helmet);
-      this.maxHp += helmet.HP;
+      this.helmet = new Armour(scene, 1, [], 'helmet', this);
+      this.maxHp += this.helmet.HP;
       this.hp = this.maxHp; // Set current HP to max HP
     }
     
@@ -144,6 +144,13 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       .setDisplaySize(size, size)
       .setDepth(1);
     this.viz.add([ this.baseVisual, this.faceVisual ]);
+
+    if (this.armour) {
+      this.viz.add([this.armour]);
+    }
+    if (this.helmet) {
+      this.viz.add([this.helmet]);
+    }
 
     if ( scene.sys.game.config.physics.arcade.debug ) {
       // Add a translucent circle to visualize the unit's range
@@ -189,8 +196,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    * @param {number} delta - The time since the last update in milliseconds.
    */
   update(time, delta) {
-    const pointer = this.scene.input.activePointer;   
 
+    const pointer = this.scene.input.activePointer;
     this.rethinkTimer -= delta;
 
     if (this.rethinkTimer <= 0 || this.currentMotion === null) {
@@ -208,9 +215,9 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       this.x - halfSize < this.scene.physics.world.bounds.left
     ) {
       this.x = Phaser.Math.Clamp(
-      this.x,
-      this.scene.physics.world.bounds.left + halfSize,
-      this.scene.physics.world.bounds.right - halfSize
+        this.x,
+        this.scene.physics.world.bounds.left + halfSize,
+        this.scene.physics.world.bounds.right - halfSize
       );
       this.body.setVelocityX(0);
     }
@@ -221,9 +228,9 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       this.y - halfSize < this.scene.physics.world.bounds.top
     ) {
       this.y = Phaser.Math.Clamp(
-      this.y,
-      this.scene.physics.world.bounds.top + halfSize,
-      this.scene.physics.world.bounds.bottom - halfSize
+        this.y,
+        this.scene.physics.world.bounds.top + halfSize,
+        this.scene.physics.world.bounds.bottom - halfSize
       );
       this.body.setVelocityY(0);
     }
@@ -234,8 +241,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
         this.currentParryRate + this.parryRecoveryRate * (delta / 1000)
       );
     }
-    
-    this.syncVisuals()
+
+    this.syncVisuals();
   }
 
   // --- ACCESSORS ---
@@ -614,15 +621,22 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     if (this.targetUnit instanceof Unit) {
       if (!this.targetUnit.isAlive && 
           this.targetUnit.team &&
-          this.team.getRelationship(this.targetUnit.team.name) === TEAM_RELATIONSHIP.ENEMY &&
-          this.currentStance === STANCES.CHARGE) {
+          this.team.getRelationship(this.targetUnit.team.name) === TEAM_RELATIONSHIP.ENEMY) {
         // Reapplying this stance should trigger the unit to choose a new target
         console.debug(`Unit ${this.id} is chasing a dead enemy unit, rethinking`);
         const closestEnemyUnit = this.chooseClosestEnemyUnit();
-        if (closestEnemyUnit) {
-          this.targetUnit = closestEnemyUnit;
+
+        // Valid even if closestEnemyUnit is null
+        this.targetUnit = closestEnemyUnit;
+
+        if (this.currentStance === STATUS.CHARGE) {
           this.setStance(STANCES.CHARGE);
+        } else {
+          this.chooseStance();
         }
+
+        this.chooseNextMotion();
+        return; 
       }
 
       closeEnough = this.targetUnit.displayWidth / 2 + this.CLOSE_ENOUGH;
@@ -668,6 +682,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
     this.baseVisual.setRotation(angle);
     this.faceVisual.setRotation(angle);
+    this.helmet?.setRotation(angle);
+    this.armour?.setRotation(angle);
   }
 
   /**
@@ -688,7 +704,11 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
 
     // Not implemented yet. SOON!
     if (!this.isTargetInRange(target)) {
+      // Do we need to be worried about this occurance?
       console.warn(`Unit ${this.id} cannot strike, target is out of range.`);
+      // Unable to complete this strike, so instead, "fail" this motion.
+      this.currentMotion = null;
+      this.rethinkTimer = 0;
       return;
     }
 
@@ -709,8 +729,10 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
   
     this.rethinkTimer = this.ATTACK_COOLDOWN; // Set cooldown for the next attack
     // TODO: Maybe handle stepping back and forth. But for now, just stand still.
-    this.completedMotions.push(MOTIONS.STRIKE); // Mark the strike motion as completed
-    this.currentMotion = MOTIONS.IDLE; // Reset current motion after striking    
+    // Marking the strike as completed and setting motion to idle effectively indicates
+    // a vulnerable state after striking.
+    this.completedMotions.push(MOTIONS.STRIKE); 
+    this.currentMotion = MOTIONS.IDLE;
   }
 
   /**
@@ -860,7 +882,9 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
-    this.armour?.update(); // Update armour visuals if it exists
+    // this.armour?.update();
+    // this.helmet?.update();
+
   }
 
 }
