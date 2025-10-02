@@ -1,6 +1,7 @@
 {
   "name": "empire-fight-sim",
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
     "start": "http-server . -p 8080",
     "dev": "vite",

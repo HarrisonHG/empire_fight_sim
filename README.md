@@ -2,6 +2,20 @@
 
 A web-based fight simulator using empire larp fight rules
 
+# Development
+
+## Running the Python test suite
+
+Some of the core rules are now unit-tested via `pytest`. The tests execute the
+pure utility modules with Node.js, so both Python and Node need to be available.
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+GitHub Actions runs the same workflow on every pull request.
+
 # TODO
 
 1. X Create a team entity that units can be part of.

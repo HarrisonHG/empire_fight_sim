@@ -4,9 +4,25 @@
  * It handles what happens when one unit wishes to interact (such as attack, heal or loot) another unit.
  */
 
-import Unit from '../../entities/Unit.js';
 import InteractionPayload from './interactionPayload.js'; // <-- FIXED: default import
 import { InteractionResult } from './interactionResult.js';
+
+function assertUnitLike(entity, name) {
+  if (!entity || typeof entity.recieveInteraction !== 'function') {
+    throw new Error(`${name} must provide a recieveInteraction(payload) method.`);
+  }
+  return entity;
+}
+
+function assertInteractionResult(result) {
+  if (result instanceof InteractionResult) {
+    return result;
+  }
+  if (result && typeof result.valueRecieved === 'number' && typeof result.callTaken === 'boolean') {
+    return result;
+  }
+  throw new Error('Interactions must return an InteractionResult.');
+}
 
 /**
  * Interaction System
@@ -22,17 +38,14 @@ export const InteractionSystem = {
    */
    interact(sourceUnit, targetUnit, payload) {
     
-    if (!(sourceUnit instanceof Unit)) {
-      throw new Error("sourceUnit must be an instance of Unit.");
-    }
-    if (!(targetUnit instanceof Unit)) {
-      throw new Error("targetUnit must be an instance of Unit.");
-    }
+    assertUnitLike(sourceUnit, 'sourceUnit');
+    assertUnitLike(targetUnit, 'targetUnit');
     if (!(payload instanceof InteractionPayload)) {
       throw new Error("Invalid payload for interaction.");
     }
 
-    return targetUnit.recieveInteraction(payload);
+    const result = targetUnit.recieveInteraction(payload);
+    return assertInteractionResult(result);
   }
 
   // TODO: If you want to add external effects from this interaction, such as a random
