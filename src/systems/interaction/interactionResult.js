@@ -1,5 +1,4 @@
-import Unit from '../../entities/Unit.js';
-import { Call, CALLS } from '../calls.js';
+import { Call } from '../calls.js';
 
 /**
  * InteractionResult class represents the result of an interaction between two units.
@@ -17,7 +16,18 @@ export class InteractionResult {
    *       we'll need to revisit this design.
    * @warning For future Harrison - Expect counter calls to be added here!
    */
-    constructor(valueRecieved, callTaken) {    
+    constructor(valueRecieved, callTaken) {
+        if (typeof valueRecieved !== 'number') {
+            throw new Error('valueRecieved must be a number.');
+        }
+        if (typeof callTaken !== 'boolean') {
+            throw new Error('callTaken must be a boolean.');
+        }
+
+        if (valueRecieved !== 0 && Number.isNaN(valueRecieved)) {
+            throw new Error('valueRecieved cannot be NaN.');
+        }
+
         this.valueRecieved = valueRecieved;
         this.callTaken = callTaken;
     }

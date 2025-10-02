@@ -30,6 +30,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, size, speed, colour) {
     super(scene, x, y, 'empty');
     this.scene = scene;
+    this.size = size;
 
     // Movement
     this.moveSpeed = speed || 200; // Default speed in pixels per second

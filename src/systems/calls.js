@@ -12,13 +12,34 @@ export class Call {
      * @param {number} duration - How long the effect lasts in seconds. 0 indicates no duration.
      *  - And -1 indicates "until fixed"
      * @param {number} value - The value of the call, such as damage or healing amount.
-     * @see {@link https://www.profounddecisions.co.uk/empire-wiki/Calls|Empire Calls Wiki} */
-  constructor(name, description, castingTime, duration, value) {
+     * @see {@link https://www.profounddecisions.co.uk/empire-wiki/Calls|Empire Calls Wiki}
+     */
+  constructor(name, description, category, castingTime, duration, value) {
+    if (typeof name !== 'string' || name.trim() === '') {
+      throw new Error('Call name must be a non-empty string.');
+    }
+    if (typeof description !== 'string' || description.trim() === '') {
+      throw new Error('Call description must be a non-empty string.');
+    }
+    if (typeof category !== 'string' || category.trim() === '') {
+      throw new Error('Call category must be a non-empty string.');
+    }
+    if (typeof castingTime !== 'number' || castingTime < 0) {
+      throw new Error('Call castingTime must be a non-negative number.');
+    }
+    if (typeof duration !== 'number') {
+      throw new Error('Call duration must be a number.');
+    }
+    if (typeof value !== 'number') {
+      throw new Error('Call value must be a number.');
+    }
+
     this.name = name;
     this.description = description;
+    this.category = category;
     this.castingTime = castingTime;
     this.duration = duration;
-    this.value = this.value;
+    this.value = value;
   }
 }
 

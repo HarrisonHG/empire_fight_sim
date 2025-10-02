@@ -1,14 +1,18 @@
 import Phaser from 'phaser';
-import Unit from './Unit.js';
-import RespawnPoint from './landmarks/RespawnPoint.js';
-import RallyPoint from './landmarks/RallyPoint.js';
+import {
+    TEAM_RELATIONSHIP,
+    createRelationshipMap,
+    assertValidRelationship,
+    calculateClosestPoint
+} from './teamUtils.js';
 
-export const TEAM_RELATIONSHIP = Object.freeze({
-    ALLY: 'ally',
-    ENEMY: 'enemy',
-    NEUTRAL: 'neutral',
-    UNKNOWN: 'unknown'
-});
+export { TEAM_RELATIONSHIP } from './teamUtils.js';
+
+/**
+ * @typedef {import('./Unit.js').default} Unit
+ * @typedef {import('./landmarks/RespawnPoint.js').default} RespawnPoint
+ * @typedef {import('./landmarks/RallyPoint.js').default} RallyPoint
+ */
 
 /**
  * Represents a team of units in the game.
@@ -28,8 +32,8 @@ export class Team extends Phaser.GameObjects.Group {
         this.name = name; // Name of the team
         this.colour = colour || '#888888'; // Default grey if no colour is provided
         this.units = units;
-        this.teamRelationship = {}
-        this.teamRelationship[name] = TEAM_RELATIONSHIP.ALLY; // Default relationship with itself
+        /** @type {Record<string, TEAM_RELATIONSHIP>} */
+        this.teamRelationship = createRelationshipMap(name);
         this.respawnPoints = [];
         this.rallyPoints = [];
 
@@ -78,9 +82,7 @@ export class Team extends Phaser.GameObjects.Group {
      * @param {TEAM_RELATIONSHIP} relationship - The relationship status (e.g., 'ally', 'enemy').
      */
     setRelationship(teamName, relationship) {
-        if (!Object.values(TEAM_RELATIONSHIP).includes(relationship)) {
-            throw new Error(`Invalid relationship: ${relationship}`);
-        }
+        assertValidRelationship(relationship);
         this.teamRelationship[teamName] = relationship;
     }
 
@@ -90,7 +92,6 @@ export class Team extends Phaser.GameObjects.Group {
      * @returns {TEAM_RELATIONSHIP} The relationship status with the specified team.
      */
     getRelationship(teamName) {
-        let debug_val = this.teamRelationship[teamName]
         return this.teamRelationship[teamName] || TEAM_RELATIONSHIP.UNKNOWN;
     }
 
@@ -101,19 +102,8 @@ export class Team extends Phaser.GameObjects.Group {
      * @return {RespawnPoint|null} The closest respawn point, or null if none exist.
      */
     getClosestRespawnPoint(x, y) {
-        if (this.respawnPoints.length === 0) {
-            return null; // No respawn points available
-        }
-        let closestPoint = null;
-        let closestDistance = Infinity;
-        this.respawnPoints.forEach(respawnPoint => {
-            const distance = Phaser.Math.Distance.Between(x, y, respawnPoint.x, respawnPoint.y);
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestPoint = respawnPoint;
-            }
-        });
-        return closestPoint;
+        const { point } = calculateClosestPoint(x, y, this.respawnPoints);
+        return point;
     }
 
     /**
@@ -123,19 +113,8 @@ export class Team extends Phaser.GameObjects.Group {
      * @return {RallyPoint|null} The closest rally point, or null
      */
     getClosestRallyPoint(x, y) {
-        if (this.rallyPoints.length === 0) {
-            return null; // No rally points available
-        }
-        let closestPoint = null;
-        let closestDistance = Infinity;
-        this.rallyPoints.forEach(rallyPoint => {
-            const distance = Phaser.Math.Distance.Between(x, y, rallyPoint.x, rallyPoint.y);
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestPoint = rallyPoint;
-            }
-        });
-        return closestPoint;
+        const { point } = calculateClosestPoint(x, y, this.rallyPoints);
+        return point;
     }
 
     // --- METHODS ---
