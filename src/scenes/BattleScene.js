@@ -107,6 +107,25 @@ export default class BattleScene extends Phaser.Scene {
     this.unit_spawner = new UnitSpawner(this, this.teams, this.unitGroup);
     this.respawn_spawner = new RespawnSpawner(this, this.teams);
     this.rally_spawner = new RallyPointSpawner(this, this.teams);
+
+    // Small UI button to return to the main menu
+    const backBtnStyle = {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#ffffff',
+      backgroundColor: '#444444',
+      padding: { x: 8, y: 4 },
+    };
+    const backHover = { backgroundColor: '#666666' };
+    const backBtn = this.add.text(8, 8, 'Menu', backBtnStyle)
+      .setOrigin(0, 0)
+      .setInteractive({ useHandCursor: true })
+      .setScrollFactor(0);
+    backBtn.on('pointerover', () => backBtn.setStyle(backHover));
+    backBtn.on('pointerout', () => backBtn.setStyle({ backgroundColor: backBtnStyle.backgroundColor }));
+    backBtn.on('pointerdown', () => {
+      this.scene.start('MainMenuScene', { sceneWidth: this.sceneWidth, sceneHeight: this.sceneHeight });
+    });
   }
 
   /**
