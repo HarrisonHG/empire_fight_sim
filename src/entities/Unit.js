@@ -26,8 +26,9 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    * @param {number} size - The diameter of the unit.
    * @param {number} [speed] - The movement speed of the unit in pixels per second.
    * @param {string} [colour] - Hex colour of the unit, e.g. '#FF0000' for red.
+   * @param {{ armour?: string, weapon?: string, helmet?: boolean }} [loadout] - Optional equipment loadout.
    */
-  constructor(scene, x, y, size, speed, colour) {
+  constructor(scene, x, y, size, speed, colour, loadout = null) {
     super(scene, x, y, 'empty');
     this.scene = scene;
 
@@ -62,59 +63,18 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.isAlive = true; // Is the unit alive? Used for health checks and interactions.
 
     // Equipment
-    this.equipment = []; // Array to hold usable equipment like weapons, shields, etc.
-    const weaponClasses = [OneHanded, Spear, TwoHanded];
-    //const weaponClasses = [Spear];
-    let weaponRoll = Math.floor(Math.random() * weaponClasses.length);
-    const weaponClass = weaponClasses[weaponRoll];
-    this.equipment = [
-      new weaponClass(scene, this.x-5, this.y+20, this)
-    ]
-    if (weaponClass === OneHanded) {
-      this.equipment.push(new Shield(scene, this.x+5, this.y+20, this));
-    }   
-    this.currentWeapon = this.equipment[0]; // Default to the first weapon in the equipment array
-
-    // Add armour to the unit
-    // (scene, HP, resistCalls, texture, ownerUnit)
-    const armourRoll = Math.floor(Math.random() * 5);
-    switch (armourRoll) {
-      case 1:
-        this.armour = new Armour(scene, 2, [], 'lightArmour', this);
-        break;
-      case 2:
-        this.armour = new Armour(scene, 3, [CALLS.CLEAVE], 'mediumArmour', this);
-        break;
-      case 3:
-        this.armour = new Armour(scene, 4, [CALLS.CLEAVE, CALLS.IMPALE], 'heavyArmour', this);
-        break;
-      case 4:
-        this.armour = new Armour(scene, 2, [], 'magicArmour', this);
-        break;
-      // case 0: no armour
-    }
-    if (this.armour) {
-      // We're not in the business of changing armour mid-battle, so let's just
-      // add the armour's HP to the unit's max HP for the sake of ease.
-      this.maxHp += this.armour.HP;
-      this.hp = this.maxHp; // Set current HP to max HP
-    }
-
-    // Random 20% chance to add a helmet
+    this.size = size;
+    this.equipment = [];
+    this.armour = null;
     this.helmet = null;
-    if (this.armour && Math.random() < 0.2) {
-      this.helmet = new Armour(scene, 1, [], 'helmet', this);
-      this.maxHp += this.helmet.HP;
-      this.hp = this.maxHp; // Set current HP to max HP
-    }
-    
+    this.currentWeapon = null;
+    this.baseMaxHp = this.maxHp;
+
+    this.initialiseLoadout(loadout);
+
     // TODO: SKill levels n shit!
     this.maxParryRate = 0.8
     this.minParryRate = 0.1
-    this.parryRecoveryRate = 0.3 // Percentage of how much "parry rate" is recovered per second.
-    if (this.equipment.some(eq => eq instanceof Shield)) {
-      this.parryRecoveryRate += 0.2;
-    }
     this.currentParryRate = this.minParryRate; // Who spawns into life with perfect defence?
     this.parryDamage = 0.5 // How much parry chance "damage" is taken when struck
     
@@ -188,6 +148,159 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
       this.viz.add(this.nameText);
     }
 
+  }
+
+  initialiseLoadout(loadout) {
+    this.resetLoadoutState();
+    const hasCustomLoadout = loadout && (loadout.weapon || loadout.armour || typeof loadout.helmet === 'boolean');
+    if (hasCustomLoadout) {
+      this.applyCustomLoadout(loadout);
+    } else {
+      this.applyRandomLoadout();
+    }
+    this.finaliseLoadout();
+  }
+
+  resetLoadoutState() {
+    if (this.equipment && this.equipment.length) {
+      for (const item of this.equipment) {
+        if (item && typeof item.destroy === 'function') {
+          item.destroy();
+        }
+      }
+    }
+    this.equipment = [];
+
+    this.currentWeapon = null;
+
+    if (this.armour) {
+      this.armour.destroy();
+      this.armour = null;
+    }
+    if (this.helmet) {
+      this.helmet.destroy();
+      this.helmet = null;
+    }
+
+    this.maxHp = this.baseMaxHp;
+    this.hp = this.maxHp;
+    this.parryRecoveryRate = 0.3;
+  }
+
+  applyCustomLoadout(loadout) {
+    const weaponKey = loadout.weapon || 'sword';
+    const armourKey = loadout.armour || 'none';
+    const helmetEnabled = Boolean(loadout.helmet);
+
+    this.equipWeapon(weaponKey);
+    this.equipArmour(armourKey);
+    this.equipHelmet(helmetEnabled);
+  }
+
+  applyRandomLoadout() {
+    const weaponKeys = ['sword', 'spear', 'bigAxe'];
+    const weaponKey = weaponKeys[Math.floor(Math.random() * weaponKeys.length)];
+    this.equipWeapon(weaponKey);
+
+    const armourRoll = Math.floor(Math.random() * 5);
+    switch (armourRoll) {
+      case 1:
+        this.equipArmour('light');
+        break;
+      case 2:
+        this.equipArmour('medium');
+        break;
+      case 3:
+        this.equipArmour('heavy');
+        break;
+      case 4:
+        this.equipArmour('magic');
+        break;
+      default:
+        this.equipArmour('none');
+        break;
+    }
+
+    const shouldAddHelmet = this.armour && Math.random() < 0.2;
+    this.equipHelmet(shouldAddHelmet);
+  }
+
+  equipWeapon(weaponKey) {
+    const key = weaponKey || 'sword';
+    let weaponInstance = null;
+    switch (key) {
+      case 'spear':
+        weaponInstance = new Spear(this.scene, this.x - 5, this.y + 20, this);
+        break;
+      case 'bigAxe':
+        weaponInstance = new TwoHanded(this.scene, this.x - 5, this.y + 20, this);
+        break;
+      case 'sword':
+      default:
+        weaponInstance = new OneHanded(this.scene, this.x - 5, this.y + 20, this);
+        break;
+    }
+
+    if (weaponInstance) {
+      this.equipment.push(weaponInstance);
+    }
+
+    if (key === 'sword') {
+      const shield = new Shield(this.scene, this.x + 5, this.y + 20, this);
+      this.equipment.push(shield);
+    }
+  }
+
+  equipArmour(armourKey) {
+    const armourConfigs = {
+      none: null,
+      light: { hp: 2, resists: [], texture: 'lightArmour' },
+      medium: { hp: 3, resists: [CALLS.CLEAVE], texture: 'mediumArmour' },
+      heavy: { hp: 4, resists: [CALLS.CLEAVE, CALLS.IMPALE], texture: 'heavyArmour' },
+      magic: { hp: 2, resists: [], texture: 'magicArmour' },
+    };
+
+    const config = armourConfigs[armourKey || 'none'];
+    if (!config) {
+      if (this.armour) {
+        this.armour.destroy();
+      }
+      this.armour = null;
+      return;
+    }
+
+    if (this.armour) {
+      this.armour.destroy();
+    }
+    this.armour = new Armour(this.scene, config.hp, config.resists, config.texture, this);
+    this.maxHp += this.armour.HP;
+    this.hp = this.maxHp;
+  }
+
+  equipHelmet(enabled) {
+    if (this.helmet) {
+      this.helmet.destroy();
+      this.helmet = null;
+    }
+    if (!enabled) {
+      this.helmet = null;
+      return;
+    }
+    this.helmet = new Armour(this.scene, 1, [], 'helmet', this);
+    this.maxHp += this.helmet.HP;
+    this.hp = this.maxHp;
+  }
+
+  finaliseLoadout() {
+    const weaponCandidate = this.equipment.find(item =>
+      item instanceof OneHanded || item instanceof Spear || item instanceof TwoHanded
+    );
+    this.currentWeapon = weaponCandidate || this.equipment[0] || null;
+
+    this.parryRecoveryRate = 0.3;
+    if (this.equipment.some(eq => eq instanceof Shield)) {
+      this.parryRecoveryRate += 0.2;
+    }
   }
 
   /**

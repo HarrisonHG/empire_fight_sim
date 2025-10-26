@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import Unit from '../entities/Unit.js';
 import { TEAM_RELATIONSHIP, Team } from '../entities/Team.js';
 
-import UnitSpawner from '../controls/unitSpawner.js';
+import UnitSpawner from '../controls/UnitSpawner.js';
 import RespawnSpawner from '../controls/RespawnSpawner.js';
 import RallyPointSpawner from '../controls/RallyPointSpawner.js';
 
@@ -10,6 +10,16 @@ export default class BattleScene extends Phaser.Scene {
 
   constructor() {
     super({ key: 'BattleScene' });  // unique scene key
+    this.registerSpawnerControls = this.registerSpawnerControls.bind(this);
+    this.updateSpawnerHud = this.updateSpawnerHud.bind(this);
+    this.setTeamIndex = this.setTeamIndex.bind(this);
+    this.cycleType = this.cycleType.bind(this);
+    this.cycleArmour = this.cycleArmour.bind(this);
+    this.cycleWeapon = this.cycleWeapon.bind(this);
+    this.toggleHelmet = this.toggleHelmet.bind(this);
+    this.resetSpawnSelection = this.resetSpawnSelection.bind(this);
+    this.handleSpawnPointer = this.handleSpawnPointer.bind(this);
+    this.cleanupInput = this.cleanupInput.bind(this);
   }
 
   /**
@@ -102,52 +112,46 @@ export default class BattleScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, this.sceneWidth, this.sceneHeight);
     this.physics.world.setBoundsCollision(true, true, true, true); // Enable world bounds collision
     this.physics.world.setFPS(60); // Set the physics world to run at 60 FPS
-    
-    // Spawner HUD (bottom-right)
-    const hudStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff', backgroundColor: '#00000088', padding: { x: 8, y: 6 } };
-    this.spawnerBox = this.add.text(this.sceneWidth - 8, this.sceneHeight - 8, 'Spawner: None', hudStyle)
+
+    // Spawners wired through custom key controls
+    this.unit_spawner = new UnitSpawner(this, this.teams, this.unitGroup);
+    this.respawn_spawner = new RespawnSpawner(this, this.teams);
+    this.rally_spawner = new RallyPointSpawner(this, this.teams);
+
+    this.spawnState = {
+      teamKeys: ['playerDawn', 'playerNevvar', 'monsterJotun'],
+      teamIndex: 0,
+      types: ['unit', 'respawn', 'rally'],
+      typeIndex: -1,
+      currentType: null,
+      armourOptions: ['none', 'magic', 'light', 'medium', 'heavy'],
+      weaponOptions: ['sword', 'spear', 'bigAxe'],
+      armourIndex: 0,
+      weaponIndex: 0,
+      helmet: false,
+      loadoutInitialized: false,
+    };
+
+    const hudStyle = {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#ffffff',
+      backgroundColor: '#000000aa',
+      padding: { x: 10, y: 8 },
+    };
+    this.spawnerBox = this.add.text(this.sceneWidth - 12, this.sceneHeight - 12, '', hudStyle)
       .setOrigin(1, 1)
-      .setScrollFactor(0);
-    this._activeSpawnerSource = null; // 'unit' | 'respawn' | 'rally' | null
-    this._spawners = new Map();
-    const spawnerLabels = {
-      unit: 'Unit',
-      respawn: 'Respawn',
-      rally: 'Rally',
-    };
+      .setScrollFactor(0)
+      .setLineSpacing(4)
+      .setInteractive({ useHandCursor: false });
+    this.spawnerBox.setData('uiBlock', true);
 
-    const updateSpawnerDisplay = (type, teamKey) => {
-      if (!teamKey) {
-        if (this._activeSpawnerSource === type) {
-          this._activeSpawnerSource = null;
-          this.spawnerBox.setText('Spawner: None');
-        }
-        return;
-      }
-      const team = this.teams[teamKey];
-      const teamName = team ? team.name : teamKey;
-      this._activeSpawnerSource = type;
-      this.spawnerBox.setText(`Spawner: ${spawnerLabels[type]} - ${teamName}`);
-    };
+    this._pointerHandlers = [];
+    this._keyboardHandlers = [];
+    this._uiPointerBlock = false;
 
-    const makeSelectionHandler = (type) => (teamKey) => {
-      if (teamKey) {
-        for (const [otherType, otherSpawner] of this._spawners.entries()) {
-          if (otherType !== type && otherSpawner.clearSelection) {
-            otherSpawner.clearSelection();
-          }
-        }
-      }
-      updateSpawnerDisplay(type, teamKey);
-    };
-
-    // Input handling with sticky selection + HUD updates
-    this.unit_spawner = new UnitSpawner(this, this.teams, this.unitGroup, makeSelectionHandler('unit'));
-    this._spawners.set('unit', this.unit_spawner);
-    this.respawn_spawner = new RespawnSpawner(this, this.teams, makeSelectionHandler('respawn'));
-    this._spawners.set('respawn', this.respawn_spawner);
-    this.rally_spawner = new RallyPointSpawner(this, this.teams, makeSelectionHandler('rally'));
-    this._spawners.set('rally', this.rally_spawner);
+    this.updateSpawnerHud();
+    this.registerSpawnerControls();
 
     // Small UI button to return to the main menu
     const backBtnStyle = {
@@ -164,9 +168,232 @@ export default class BattleScene extends Phaser.Scene {
       .setScrollFactor(0);
     backBtn.on('pointerover', () => backBtn.setStyle(backHover));
     backBtn.on('pointerout', () => backBtn.setStyle({ backgroundColor: backBtnStyle.backgroundColor }));
-    backBtn.on('pointerdown', () => {
+    backBtn.setData('uiBlock', true);
+    backBtn.on('pointerdown', (pointer) => {
+      if (pointer?.event) {
+        pointer.event.stopPropagation?.();
+        pointer.event.stopImmediatePropagation?.();
+      }
+      this._uiPointerBlock = true;
       this.scene.start('MainMenuScene', { sceneWidth: this.sceneWidth, sceneHeight: this.sceneHeight });
     });
+  }
+
+  registerSpawnerControls() {
+    const addKey = (eventName, handler) => {
+      const wrapped = (evt) => {
+        if (evt && evt.repeat) return;
+        handler(evt);
+      };
+      this.input.keyboard.on(eventName, wrapped);
+      this._keyboardHandlers.push([eventName, wrapped]);
+    };
+
+    addKey('keydown-ONE', () => this.setTeamIndex(0));
+    addKey('keydown-TWO', () => this.setTeamIndex(1));
+    addKey('keydown-THREE', () => this.setTeamIndex(2));
+    addKey('keydown-NUMPAD_ONE', () => this.setTeamIndex(0));
+    addKey('keydown-NUMPAD_TWO', () => this.setTeamIndex(1));
+    addKey('keydown-NUMPAD_THREE', () => this.setTeamIndex(2));
+
+    addKey('keydown-T', () => this.cycleType());
+    addKey('keydown-A', () => this.cycleArmour());
+    addKey('keydown-W', () => this.cycleWeapon());
+    addKey('keydown-H', () => this.toggleHelmet());
+    addKey('keydown-ESC', () => this.resetSpawnSelection());
+
+    const pointerHandler = (pointer) => this.handleSpawnPointer(pointer);
+    this.input.on('pointerup', pointerHandler);
+    this._pointerHandlers.push(['pointerup', pointerHandler]);
+
+    const gameobjectDown = (pointer, gameObject) => {
+      if (gameObject?.getData && gameObject.getData('uiBlock')) {
+        this._uiPointerBlock = true;
+      }
+    };
+    this.input.on('gameobjectdown', gameobjectDown);
+    this._pointerHandlers.push(['gameobjectdown', gameobjectDown]);
+
+    this.events.once('shutdown', this.cleanupInput, this);
+    this.events.once('destroy', this.cleanupInput, this);
+  }
+
+  updateSpawnerHud() {
+    const state = this.spawnState;
+    const typeLabels = {
+      unit: 'Unit',
+      respawn: 'Respawn',
+      rally: 'Spawn Flag',
+    };
+    const armourLabels = {
+      none: 'None',
+      magic: 'Magic',
+      light: 'Light',
+      medium: 'Medium',
+      heavy: 'Heavy',
+    };
+    const weaponLabels = {
+      sword: 'Sword & Shield',
+      spear: 'Spear',
+      bigAxe: 'Two-Handed Axe',
+    };
+
+    const teamKey = this.getCurrentTeamKey();
+    const teamName = teamKey ? this.teams[teamKey]?.name ?? teamKey : 'None';
+    const currentTypeLabel = state.currentType ? typeLabels[state.currentType] : 'None';
+
+    const lines = [];
+    lines.push('Spawner');
+    lines.push(`T: Type -> ${currentTypeLabel}`);
+    lines.push(`1 / 2 / 3: Team -> ${teamName}`);
+
+    if (state.currentType === 'unit') {
+      const armour = armourLabels[state.armourOptions[state.armourIndex] ?? 'none'] ?? 'None';
+      const weapon = weaponLabels[state.weaponOptions[state.weaponIndex] ?? 'sword'] ?? 'Sword & Shield';
+      const helmet = state.helmet ? 'On' : 'Off';
+      lines.push(`A: Armour -> ${armour}`);
+      lines.push(`W: Weapon -> ${weapon}`);
+      lines.push(`H: Helmet -> ${helmet}`);
+    } else {
+      lines.push('A: Armour -> (units only)');
+      lines.push('W: Weapon -> (units only)');
+      lines.push('H: Helmet -> (units only)');
+    }
+
+    lines.push('');
+    if (state.currentType) {
+      lines.push(`Next Spawn: ${currentTypeLabel} (${teamName})`);
+    } else {
+      lines.push('Next Spawn: None (press T)');
+    }
+    lines.push('Esc: Clear selection');
+    lines.push('Click: Place');
+
+    this.spawnerBox.setText(lines.join('\n'));
+  }
+
+  setTeamIndex(index) {
+    if (!this.spawnState) return;
+    if (index < 0 || index >= this.spawnState.teamKeys.length) return;
+    this.spawnState.teamIndex = index;
+    this.updateSpawnerHud();
+  }
+
+  cycleType() {
+    const state = this.spawnState;
+    if (!state) return;
+    state.typeIndex = (state.typeIndex + 1) % state.types.length;
+    state.currentType = state.types[state.typeIndex];
+    if (state.currentType === 'unit' && !state.loadoutInitialized) {
+      state.armourIndex = state.armourOptions.indexOf('none');
+      if (state.armourIndex < 0) state.armourIndex = 0;
+      state.weaponIndex = state.weaponOptions.indexOf('sword');
+      if (state.weaponIndex < 0) state.weaponIndex = 0;
+      state.helmet = false;
+      state.loadoutInitialized = true;
+    }
+    this.updateSpawnerHud();
+  }
+
+  cycleArmour() {
+    const state = this.spawnState;
+    if (!state || state.currentType !== 'unit') return;
+    state.armourIndex = (state.armourIndex + 1) % state.armourOptions.length;
+    state.loadoutInitialized = true;
+    this.updateSpawnerHud();
+  }
+
+  cycleWeapon() {
+    const state = this.spawnState;
+    if (!state || state.currentType !== 'unit') return;
+    state.weaponIndex = (state.weaponIndex + 1) % state.weaponOptions.length;
+    state.loadoutInitialized = true;
+    this.updateSpawnerHud();
+  }
+
+  toggleHelmet() {
+    const state = this.spawnState;
+    if (!state || state.currentType !== 'unit') return;
+    state.helmet = !state.helmet;
+    state.loadoutInitialized = true;
+    this.updateSpawnerHud();
+  }
+
+  resetSpawnSelection() {
+    const state = this.spawnState;
+    if (!state) return;
+    state.typeIndex = -1;
+    state.currentType = null;
+    state.armourIndex = 0;
+    state.weaponIndex = 0;
+    state.helmet = false;
+    state.loadoutInitialized = false;
+    state.teamIndex = 0;
+    this.updateSpawnerHud();
+  }
+
+  getCurrentTeamKey() {
+    if (!this.spawnState) return null;
+    return this.spawnState.teamKeys[this.spawnState.teamIndex] ?? null;
+  }
+
+  getUnitLoadout() {
+    const state = this.spawnState;
+    if (!state) {
+      return { armour: 'none', weapon: 'sword', helmet: false };
+    }
+    const armour = state.armourOptions[state.armourIndex] ?? 'none';
+    const weapon = state.weaponOptions[state.weaponIndex] ?? 'sword';
+    return {
+      armour,
+      weapon,
+      helmet: Boolean(state.helmet),
+    };
+  }
+
+  handleSpawnPointer(pointer) {
+    if (pointer.button !== 0) {
+      return;
+    }
+    if (this._uiPointerBlock) {
+      this._uiPointerBlock = false;
+      return;
+    }
+    if (!this.spawnState || !this.spawnState.currentType) {
+      return;
+    }
+
+    const teamKey = this.getCurrentTeamKey();
+    if (!teamKey) return;
+
+    switch (this.spawnState.currentType) {
+      case 'unit':
+        this.unit_spawner.spawn(pointer, teamKey, this.getUnitLoadout());
+        break;
+      case 'respawn':
+        this.respawn_spawner.spawn(pointer, teamKey);
+        break;
+      case 'rally':
+        this.rally_spawner.spawn(pointer, teamKey);
+        break;
+      default:
+        break;
+    }
+  }
+
+  cleanupInput() {
+    if (this._keyboardHandlers) {
+      for (const [eventName, handler] of this._keyboardHandlers) {
+        this.input.keyboard.off(eventName, handler);
+      }
+      this._keyboardHandlers.length = 0;
+    }
+    if (this._pointerHandlers) {
+      for (const [eventName, handler] of this._pointerHandlers) {
+        this.input.off(eventName, handler);
+      }
+      this._pointerHandlers.length = 0;
+    }
   }
 
   /**

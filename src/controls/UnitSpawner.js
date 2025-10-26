@@ -1,79 +1,41 @@
 import Unit from '../entities/Unit.js';
-import ButtonControl from './ButtonControl.js';
 
 /**
- * A temporary, developer control for spawning units in the game.
- * Hold 1, 2, 3 etc and left click to spawn units.
- * This is not intended for production use and should be removed in the final version.
+ * Responsible for instantiating units with a configured loadout.
  */
 export default class UnitSpawner {
   /**
    * @param {import('phaser').Scene} scene
-   * @param {Record<string, import('../entities/Team.js').Team>} teams – your scene.teams dictionary
-   * @param {import('phaser').Physics.Arcade.Group} group – the physics group to add to
+   * @param {Record<string, import('../entities/Team.js').Team>} teams your scene.teams dictionary
+   * @param {import('phaser').Physics.Arcade.Group} group the physics group to add to
    */
-  constructor(scene, teams, group, onSelectionChange = null) {
-    this.scene     = scene;
-    this.teams     = teams;
+  constructor(scene, teams, group) {
+    this.scene = scene;
+    this.teams = teams;
     this.unitGroup = group;
-
-    // map Phaser key names → your team keys in scene.teams
-    this.keyToTeam = {
-      ONE:   'playerDawn',
-      TWO:   'playerNevvar',
-      THREE: 'monsterJotun',
-    };
-
-    this.control = new ButtonControl(
-      scene,
-      this.keyToTeam,
-      (pointer, teamKey) => this.trySpawn(pointer, teamKey),
-      'pointerdown',
-      { mode: 'sticky', onSelectionChange }
-    );
-
-    scene.events.once('shutdown', this.destroy, this);
-    scene.events.once('destroy', this.destroy, this);
   }
 
   /**
-   * Called on every pointerdown
+   * Spawn a unit for the given team at the pointer's world position.
    * @param {import('phaser').Input.Pointer} pointer
    * @param {string} teamKey
+   * @param {{ armour: string, weapon: string, helmet: boolean }} loadout
    */
-  trySpawn(pointer, teamKey) {
-    if (!teamKey) return;  // no valid key held
+  spawn(pointer, teamKey, loadout) {
+    if (!teamKey) return;
 
-    // spawn parameters
-    const size  = 40;
+    const team = this.teams[teamKey];
+    if (!team) return;
+
+    const size = 40;
     const speed = 150;
-    const team  = this.teams[teamKey];
-    const colour= team.colour;
-
-    // worldX/worldY give us canvas→world coords
+    const colour = team.colour;
     const x = pointer.worldX;
     const y = pointer.worldY;
 
-    // 1) instantiate
-    const unit = new Unit(this.scene, x, y, size, speed, colour);
-
-    // 2) register with team (sets tint + internal list)
+    const unit = new Unit(this.scene, x, y, size, speed, colour, loadout);
     team.addUnit(unit);
-
-    // 3) register with your physics group (so collisions & updates fire)
     this.unitGroup.add(unit);
   }
-
-  clearSelection() {
-    if (this.control && typeof this.control.clearSelection === 'function') {
-      this.control.clearSelection();
-    }
-  }
-
-  destroy() {
-    if (this.control) {
-      this.control.destroy();
-      this.control = null;
-    }
-  }
 }
+
