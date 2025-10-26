@@ -1,6 +1,5 @@
-import Phaser from 'phaser';
 import Unit from '../entities/Unit.js';
-import { Team } from '../entities/Team.js';
+import ButtonControl from './ButtonControl.js';
 
 /**
  * A temporary, developer control for spawning units in the game.
@@ -9,9 +8,9 @@ import { Team } from '../entities/Team.js';
  */
 export default class UnitSpawner {
   /**
-   * @param {Phaser.Scene} scene
-   * @param {Object.<string,Team>} teams      – your scene.teams dictionary
-   * @param {Phaser.Physics.Arcade.Group} group – the physics group to add to
+   * @param {import('phaser').Scene} scene
+   * @param {Record<string, import('../entities/Team.js').Team>} teams – your scene.teams dictionary
+   * @param {import('phaser').Physics.Arcade.Group} group – the physics group to add to
    */
   constructor(scene, teams, group) {
     this.scene     = scene;
@@ -25,24 +24,22 @@ export default class UnitSpawner {
       THREE: 'monsterJotun',
     };
 
-    // install keyboard listeners for Digit1/2/3
-    this.keys = scene.input.keyboard.addKeys('ONE,TWO,THREE');
+    this.control = new ButtonControl(
+      scene,
+      this.keyToTeam,
+      (pointer, teamKey) => this.trySpawn(pointer, teamKey)
+    );
 
-    // on any click, maybe spawn
-    scene.input.on('pointerdown', this.trySpawn, this);
+    scene.events.once('shutdown', this.destroy, this);
+    scene.events.once('destroy', this.destroy, this);
   }
 
   /**
    * Called on every pointerdown
-   * @param {Phaser.Input.Pointer} pointer
+   * @param {import('phaser').Input.Pointer} pointer
+   * @param {string} teamKey
    */
-  trySpawn(pointer) {
-    // figure out which key is currently down
-    const { ONE, TWO, THREE } = this.keys;
-    let teamKey = null;
-    if (ONE.isDown)   teamKey = this.keyToTeam.ONE;
-    if (TWO.isDown)   teamKey = this.keyToTeam.TWO;
-    if (THREE.isDown) teamKey = this.keyToTeam.THREE;
+  trySpawn(pointer, teamKey) {
     if (!teamKey) return;  // no valid key held
 
     // spawn parameters
@@ -63,5 +60,12 @@ export default class UnitSpawner {
 
     // 3) register with your physics group (so collisions & updates fire)
     this.unitGroup.add(unit);
+  }
+
+  destroy() {
+    if (this.control) {
+      this.control.destroy();
+      this.control = null;
+    }
   }
 }

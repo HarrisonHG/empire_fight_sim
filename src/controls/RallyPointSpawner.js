@@ -1,6 +1,5 @@
-import Phaser from "phaser";
-import { Team } from "../entities/Team.js";
 import RallyPoint from "../entities/landmarks/RallyPoint.js";
+import ButtonControl from "./ButtonControl.js";
 
 /**
  * A temporary, developer control for spawning respawn points in the game.
@@ -9,8 +8,8 @@ import RallyPoint from "../entities/landmarks/RallyPoint.js";
  */
 export default class RallyPointSpawner {
   /**
-   * @param {Phaser.Scene} scene
-   * @param {Object.<string,Team>} teams      – your scene.teams dictionary
+   * @param {import('phaser').Scene} scene
+   * @param {Record<string, import('../entities/Team.js').Team>} teams – your scene.teams dictionary
    */
   constructor(scene, teams) {
     this.scene = scene;
@@ -23,22 +22,22 @@ export default class RallyPointSpawner {
       NUMPAD_SIX:   'monsterJotun',
     };
 
-    // install keyboard listeners for Numpad1/2/3
-    this.keys = scene.input.keyboard.addKeys('NUMPAD_FOUR,NUMPAD_FIVE,NUMPAD_SIX');
-    scene.input.on('pointerdown', this.trySpawn, this);
+    this.control = new ButtonControl(
+      scene,
+      this.keyToTeam,
+      (pointer, teamKey) => this.trySpawn(pointer, teamKey)
+    );
+
+    scene.events.once('shutdown', this.destroy, this);
+    scene.events.once('destroy', this.destroy, this);
   }
 
   /**
    * Called on every pointerdown
-   * @param {Phaser.Input.Pointer} pointer
+   * @param {import('phaser').Input.Pointer} pointer
+   * @param {string} teamKey
    */
-  trySpawn(pointer) {
-    // figure out which key is currently down
-    const { NUMPAD_FOUR, NUMPAD_FIVE, NUMPAD_SIX } = this.keys;
-    let teamKey = null;
-    if (NUMPAD_FOUR.isDown)   teamKey = this.keyToTeam.NUMPAD_FOUR;
-    if (NUMPAD_FIVE.isDown)   teamKey = this.keyToTeam.NUMPAD_FIVE;
-    if (NUMPAD_SIX.isDown) teamKey = this.keyToTeam.NUMPAD_SIX;
+  trySpawn(pointer, teamKey) {
     if (!teamKey) return;
 
     // spawn parameters
@@ -51,5 +50,12 @@ export default class RallyPointSpawner {
     const rallyPoint = new RallyPoint(this.scene, x, y, team.name);
     rallyPoint.place(x, y, this.scene);
     team.rallyPoints.push(rallyPoint);
+  }
+  
+  destroy() {
+    if (this.control) {
+      this.control.destroy();
+      this.control = null;
+    }
   }
 }
