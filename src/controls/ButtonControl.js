@@ -8,17 +8,46 @@ export default class ButtonControl {
    * @param {(pointer: import('phaser').Input.Pointer, bindingValue: string, keyName: string) => void} onPointerDown
    * @param {string} [pointerEvent='pointerdown']
    */
-  constructor(scene, keyBindings, onPointerDown, pointerEvent = 'pointerdown') {
+  constructor(scene, keyBindings, onPointerDown, pointerEvent = 'pointerdown', options = {}) {
     this.scene = scene;
     this.keyBindings = keyBindings;
     this.onPointerDown = onPointerDown;
     this.pointerEvent = pointerEvent;
+    this.mode = options.mode || 'hold'; // 'hold' | 'sticky'
+    this.onSelectionChange = options.onSelectionChange || null;
+    this.clearKeys = options.clearKeys || ['ESC'];
 
     this.keyNames = Object.keys(this.keyBindings);
     this.keys = scene.input.keyboard.addKeys(this.keyNames.join(','));
 
     this.handlePointer = this.handlePointer.bind(this);
     scene.input.on(this.pointerEvent, this.handlePointer);
+
+    this.selected = null; // { keyName, value } for sticky mode
+    this._keyListeners = [];
+    if (this.mode === 'sticky') {
+      // Listen for specific bound key presses to set selection
+      for (const keyName of this.keyNames) {
+        const evt = `keydown-${keyName}`;
+        const fn = () => {
+          this.selected = { keyName, value: this.keyBindings[keyName] };
+          if (this.onSelectionChange) this.onSelectionChange(this.selected.value, keyName);
+        };
+        scene.input.keyboard.on(evt, fn);
+        this._keyListeners.push([evt, fn]);
+      }
+      // Clear selection on configured clear keys (default: ESC)
+      for (const clearName of this.clearKeys) {
+        const evt = `keydown-${clearName}`;
+        const fn = () => {
+          if (!this.selected) return;
+          this.selected = null;
+          if (this.onSelectionChange) this.onSelectionChange(null, clearName);
+        };
+        scene.input.keyboard.on(evt, fn);
+        this._keyListeners.push([evt, fn]);
+      }
+    }
   }
 
   /**
@@ -40,11 +69,29 @@ export default class ButtonControl {
    * @param {import('phaser').Input.Pointer} pointer
    */
   handlePointer(pointer) {
-    const activeBinding = this.getActiveBinding();
-    if (!activeBinding) {
+    let binding = null;
+    if (this.mode === 'sticky') {
+      binding = this.selected;
+    } else {
+      binding = this.getActiveBinding();
+    }
+    if (!binding) return;
+    this.onPointerDown(pointer, binding.value, binding.keyName);
+  }
+
+  /**
+   * Clear the sticky selection if present.
+   * @param {boolean} [notify=true]
+   */
+  clearSelection(notify = true) {
+    if (this.mode !== 'sticky') return;
+    if (!this.selected) {
       return;
     }
-    this.onPointerDown(pointer, activeBinding.value, activeBinding.keyName);
+    this.selected = null;
+    if (notify && this.onSelectionChange) {
+      this.onSelectionChange(null, null);
+    }
   }
 
   /**
@@ -52,5 +99,11 @@ export default class ButtonControl {
    */
   destroy() {
     this.scene.input.off(this.pointerEvent, this.handlePointer);
+    if (this._keyListeners && this._keyListeners.length) {
+      for (const [evt, fn] of this._keyListeners) {
+        this.scene.input.keyboard.off(evt, fn);
+      }
+      this._keyListeners = [];
+    }
   }
 }

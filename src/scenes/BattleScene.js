@@ -103,10 +103,51 @@ export default class BattleScene extends Phaser.Scene {
     this.physics.world.setBoundsCollision(true, true, true, true); // Enable world bounds collision
     this.physics.world.setFPS(60); // Set the physics world to run at 60 FPS
     
-    // Input handling
-    this.unit_spawner = new UnitSpawner(this, this.teams, this.unitGroup);
-    this.respawn_spawner = new RespawnSpawner(this, this.teams);
-    this.rally_spawner = new RallyPointSpawner(this, this.teams);
+    // Spawner HUD (bottom-right)
+    const hudStyle = { fontFamily: 'Arial', fontSize: '18px', color: '#ffffff', backgroundColor: '#00000088', padding: { x: 8, y: 6 } };
+    this.spawnerBox = this.add.text(this.sceneWidth - 8, this.sceneHeight - 8, 'Spawner: None', hudStyle)
+      .setOrigin(1, 1)
+      .setScrollFactor(0);
+    this._activeSpawnerSource = null; // 'unit' | 'respawn' | 'rally' | null
+    this._spawners = new Map();
+    const spawnerLabels = {
+      unit: 'Unit',
+      respawn: 'Respawn',
+      rally: 'Rally',
+    };
+
+    const updateSpawnerDisplay = (type, teamKey) => {
+      if (!teamKey) {
+        if (this._activeSpawnerSource === type) {
+          this._activeSpawnerSource = null;
+          this.spawnerBox.setText('Spawner: None');
+        }
+        return;
+      }
+      const team = this.teams[teamKey];
+      const teamName = team ? team.name : teamKey;
+      this._activeSpawnerSource = type;
+      this.spawnerBox.setText(`Spawner: ${spawnerLabels[type]} - ${teamName}`);
+    };
+
+    const makeSelectionHandler = (type) => (teamKey) => {
+      if (teamKey) {
+        for (const [otherType, otherSpawner] of this._spawners.entries()) {
+          if (otherType !== type && otherSpawner.clearSelection) {
+            otherSpawner.clearSelection();
+          }
+        }
+      }
+      updateSpawnerDisplay(type, teamKey);
+    };
+
+    // Input handling with sticky selection + HUD updates
+    this.unit_spawner = new UnitSpawner(this, this.teams, this.unitGroup, makeSelectionHandler('unit'));
+    this._spawners.set('unit', this.unit_spawner);
+    this.respawn_spawner = new RespawnSpawner(this, this.teams, makeSelectionHandler('respawn'));
+    this._spawners.set('respawn', this.respawn_spawner);
+    this.rally_spawner = new RallyPointSpawner(this, this.teams, makeSelectionHandler('rally'));
+    this._spawners.set('rally', this.rally_spawner);
 
     // Small UI button to return to the main menu
     const backBtnStyle = {

@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import ButtonControl from '../src/controls/ButtonControl.js';
 
 function createSceneStub() {
-  const listeners = {};
+  const pointerListeners = {};
+  const keyboardListeners = {};
   const keys = {};
 
   const scene = {
@@ -14,21 +15,35 @@ function createSceneStub() {
           }
           return keys;
         }),
+        on: vi.fn((event, handler) => {
+          keyboardListeners[event] = handler;
+        }),
+        off: vi.fn((event, handler) => {
+          if (keyboardListeners[event] === handler) {
+            delete keyboardListeners[event];
+          }
+        }),
       },
       on: vi.fn((event, handler) => {
-        listeners[event] = handler;
+        pointerListeners[event] = handler;
       }),
       off: vi.fn((event, handler) => {
-        if (listeners[event] === handler) {
-          delete listeners[event];
+        if (pointerListeners[event] === handler) {
+          delete pointerListeners[event];
         }
       }),
     },
   };
 
   scene.emit = (event, pointer) => {
-    if (listeners[event]) {
-      listeners[event](pointer);
+    if (pointerListeners[event]) {
+      pointerListeners[event](pointer);
+    }
+  };
+
+  scene.emitKey = (event) => {
+    if (keyboardListeners[event]) {
+      keyboardListeners[event]();
     }
   };
 
@@ -87,5 +102,47 @@ describe('ButtonControl', () => {
     scene.emit('pointerdown', { worldX: 0, worldY: 0 });
 
     expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('supports sticky selection that persists until cleared', () => {
+    const scene = createSceneStub();
+    const callback = vi.fn();
+    const selectionSpy = vi.fn();
+    const control = new ButtonControl(
+      scene,
+      { ONE: 'playerDawn', TWO: 'playerNevvar' },
+      callback,
+      'pointerdown',
+      { mode: 'sticky', onSelectionChange: selectionSpy }
+    );
+
+    scene.emitKey('keydown-ONE');
+    expect(selectionSpy).toHaveBeenLastCalledWith('playerDawn', 'ONE');
+
+    const pointer = { worldX: 1, worldY: 2 };
+    scene.emit('pointerdown', pointer);
+    scene.emit('pointerdown', pointer);
+    expect(callback).toHaveBeenCalledTimes(2);
+
+    scene.emitKey('keydown-ESC');
+    expect(selectionSpy).toHaveBeenLastCalledWith(null, 'ESC');
+
+    scene.emit('pointerdown', pointer);
+    expect(callback).toHaveBeenCalledTimes(2);
+
+    scene.emitKey('keydown-TWO');
+    expect(selectionSpy).toHaveBeenLastCalledWith('playerNevvar', 'TWO');
+
+    scene.emit('pointerdown', pointer);
+    expect(callback).toHaveBeenCalledTimes(3);
+
+    control.clearSelection();
+    expect(selectionSpy).toHaveBeenLastCalledWith(null, null);
+
+    scene.emit('pointerdown', pointer);
+    expect(callback).toHaveBeenCalledTimes(3);
+
+    control.destroy();
+    expect(scene.input.keyboard.off).toHaveBeenCalled();
   });
 });

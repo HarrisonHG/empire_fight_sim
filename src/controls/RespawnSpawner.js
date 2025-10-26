@@ -11,7 +11,7 @@ export default class RespawnSpawner {
    * @param {import('phaser').Scene} scene
    * @param {Record<string, import('../entities/Team.js').Team>} teams – your scene.teams dictionary
    */
-  constructor(scene, teams) {
+  constructor(scene, teams, onSelectionChange = null) {
     this.scene = scene;
     this.teams = teams;
 
@@ -25,7 +25,9 @@ export default class RespawnSpawner {
     this.control = new ButtonControl(
       scene,
       this.keyToTeam,
-      (pointer, teamKey) => this.trySpawn(pointer, teamKey)
+      (pointer, teamKey) => this.trySpawn(pointer, teamKey),
+      'pointerdown',
+      { mode: 'sticky', onSelectionChange }
     );
 
     scene.events.once('shutdown', this.destroy, this);
@@ -51,6 +53,12 @@ export default class RespawnSpawner {
     const respawnPoint = new RespawnPoint(this.scene, x, y, team.name);
     respawnPoint.place(x, y, this.scene);
     team.respawnPoints.push(respawnPoint);
+  }
+
+  clearSelection() {
+    if (this.control && typeof this.control.clearSelection === 'function') {
+      this.control.clearSelection();
+    }
   }
   
   destroy() {

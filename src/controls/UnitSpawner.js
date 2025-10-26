@@ -12,7 +12,7 @@ export default class UnitSpawner {
    * @param {Record<string, import('../entities/Team.js').Team>} teams – your scene.teams dictionary
    * @param {import('phaser').Physics.Arcade.Group} group – the physics group to add to
    */
-  constructor(scene, teams, group) {
+  constructor(scene, teams, group, onSelectionChange = null) {
     this.scene     = scene;
     this.teams     = teams;
     this.unitGroup = group;
@@ -27,7 +27,9 @@ export default class UnitSpawner {
     this.control = new ButtonControl(
       scene,
       this.keyToTeam,
-      (pointer, teamKey) => this.trySpawn(pointer, teamKey)
+      (pointer, teamKey) => this.trySpawn(pointer, teamKey),
+      'pointerdown',
+      { mode: 'sticky', onSelectionChange }
     );
 
     scene.events.once('shutdown', this.destroy, this);
@@ -60,6 +62,12 @@ export default class UnitSpawner {
 
     // 3) register with your physics group (so collisions & updates fire)
     this.unitGroup.add(unit);
+  }
+
+  clearSelection() {
+    if (this.control && typeof this.control.clearSelection === 'function') {
+      this.control.clearSelection();
+    }
   }
 
   destroy() {
