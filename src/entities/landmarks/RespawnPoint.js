@@ -76,4 +76,16 @@ export default class RespawnPoint extends phaser.GameObjects.Zone {
             this.waitingArea = [];
         }
     }
+
+    destroy(fromScene) {
+        if (this.sprite) {
+            this.sprite.destroy();
+            this.sprite = null;
+        }
+        if (this.text) {
+            this.text.destroy();
+            this.text = null;
+        }
+        super.destroy(fromScene);
+    }
 }

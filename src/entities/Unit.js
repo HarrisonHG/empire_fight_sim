@@ -303,6 +303,59 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  destroy(fromScene) {
+    if (this.viz) {
+      this.viz.destroy(true);
+      this.viz = null;
+    }
+
+    if (this.equipment && this.equipment.length) {
+      for (const item of this.equipment) {
+        if (item && typeof item.destroy === 'function') {
+          item.destroy();
+        }
+      }
+      this.equipment = [];
+    }
+
+    if (this.armour) {
+      this.armour.destroy();
+      this.armour = null;
+    }
+
+    if (this.helmet) {
+      this.helmet.destroy();
+      this.helmet = null;
+    }
+
+    if (this.reachCircle) {
+      this.reachCircle.destroy();
+      this.reachCircle = null;
+    }
+    if (this.bar) {
+      this.bar.destroy();
+      this.bar = null;
+    }
+    if (this.barBG) {
+      this.barBG.destroy();
+      this.barBG = null;
+    }
+    if (this.parryBar) {
+      this.parryBar.destroy();
+      this.parryBar = null;
+    }
+    if (this.parryBarBG) {
+      this.parryBarBG.destroy();
+      this.parryBarBG = null;
+    }
+    if (this.nameText) {
+      this.nameText.destroy();
+      this.nameText = null;
+    }
+
+    super.destroy(fromScene);
+  }
+
   /**
    * Update the unit's state.
    * @param {number} time - The current time in milliseconds.

@@ -19,6 +19,12 @@ export default class BattleScene extends Phaser.Scene {
     this.toggleHelmet = this.toggleHelmet.bind(this);
     this.resetSpawnSelection = this.resetSpawnSelection.bind(this);
     this.handleSpawnPointer = this.handleSpawnPointer.bind(this);
+    this.togglePause = this.togglePause.bind(this);
+    this.setDeleteMode = this.setDeleteMode.bind(this);
+    this.tryDeleteAtPointer = this.tryDeleteAtPointer.bind(this);
+    this.removeUnit = this.removeUnit.bind(this);
+    this.removeRespawnPoint = this.removeRespawnPoint.bind(this);
+    this.removeRallyPoint = this.removeRallyPoint.bind(this);
     this.cleanupInput = this.cleanupInput.bind(this);
   }
 
@@ -132,6 +138,36 @@ export default class BattleScene extends Phaser.Scene {
       loadoutInitialized: false,
     };
 
+    this.isPaused = false;
+    this.deleteMode = false;
+
+    this.pauseOverlay = this.add.rectangle(0, 0, this.sceneWidth, this.sceneHeight, 0x000000, 0.45)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1000)
+      .setVisible(false);
+    this.pauseLabel = this.add.text(this.sceneWidth / 2, this.sceneHeight / 2, 'Paused', {
+      fontFamily: 'Arial',
+      fontSize: '48px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1001)
+      .setVisible(false);
+
+    this.deleteBanner = this.add.text(this.sceneWidth / 2, this.sceneHeight - 48, 'Delete Mode: Click objects to remove', {
+      fontFamily: 'Arial',
+      fontSize: '20px',
+      color: '#ff5555',
+      backgroundColor: '#000000aa',
+      padding: { x: 10, y: 6 },
+    }).setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1002)
+      .setVisible(false);
+    this.deleteBanner.setData('uiBlock', true);
+
     const hudStyle = {
       fontFamily: 'Arial',
       fontSize: '18px',
@@ -201,6 +237,14 @@ export default class BattleScene extends Phaser.Scene {
     addKey('keydown-W', () => this.cycleWeapon());
     addKey('keydown-H', () => this.toggleHelmet());
     addKey('keydown-ESC', () => this.resetSpawnSelection());
+    addKey('keydown-SPACE', () => this.togglePause());
+
+    const deleteDown = () => this.setDeleteMode(true);
+    const deleteUp = () => this.setDeleteMode(false);
+    this.input.keyboard.on('keydown-DELETE', deleteDown);
+    this.input.keyboard.on('keyup-DELETE', deleteUp);
+    this._keyboardHandlers.push(['keydown-DELETE', deleteDown]);
+    this._keyboardHandlers.push(['keyup-DELETE', deleteUp]);
 
     const pointerHandler = (pointer) => this.handleSpawnPointer(pointer);
     this.input.on('pointerup', pointerHandler);
@@ -359,6 +403,10 @@ export default class BattleScene extends Phaser.Scene {
       this._uiPointerBlock = false;
       return;
     }
+    if (this.deleteMode) {
+      this.tryDeleteAtPointer(pointer);
+      return;
+    }
     if (!this.spawnState || !this.spawnState.currentType) {
       return;
     }
@@ -382,6 +430,7 @@ export default class BattleScene extends Phaser.Scene {
   }
 
   cleanupInput() {
+    this.setDeleteMode(false);
     if (this._keyboardHandlers) {
       for (const [eventName, handler] of this._keyboardHandlers) {
         this.input.keyboard.off(eventName, handler);
@@ -394,6 +443,152 @@ export default class BattleScene extends Phaser.Scene {
       }
       this._pointerHandlers.length = 0;
     }
+    this.input.setDefaultCursor('default');
+  }
+
+  togglePause() {
+    this.isPaused = !this.isPaused;
+    if (this.isPaused) {
+      this._prevTimeScale = this.time ? (this.time.timeScale ?? 1) : 1;
+      if (this.time) {
+        this.time.timeScale = 0;
+      }
+      if (this.physics && this.physics.world && !this.physics.world.isPaused) {
+        this.physics.world.pause();
+      }
+    } else {
+      if (this.time) {
+        this.time.timeScale = this._prevTimeScale ?? 1;
+      }
+      if (this.physics && this.physics.world) {
+        this.physics.world.resume();
+      }
+    }
+
+    if (this.pauseOverlay) {
+      this.pauseOverlay.setVisible(this.isPaused);
+    }
+    if (this.pauseLabel) {
+      this.pauseLabel.setVisible(this.isPaused);
+    }
+  }
+
+  setDeleteMode(active) {
+    const shouldActivate = Boolean(active);
+    this.deleteMode = shouldActivate;
+    if (this.deleteBanner) {
+      this.deleteBanner.setVisible(shouldActivate);
+    }
+    this.input.setDefaultCursor(shouldActivate ? 'crosshair' : 'default');
+  }
+
+  tryDeleteAtPointer(pointer) {
+    const x = pointer.worldX;
+    const y = pointer.worldY;
+
+    const unit = this.findUnitAt(x, y);
+    if (unit) {
+      this.removeUnit(unit);
+      return true;
+    }
+
+    const respawn = this.findRespawnPointAt(x, y);
+    if (respawn) {
+      this.removeRespawnPoint(respawn);
+      return true;
+    }
+
+    const rally = this.findRallyPointAt(x, y);
+    if (rally) {
+      this.removeRallyPoint(rally);
+      return true;
+    }
+
+    return false;
+  }
+
+  findUnitAt(x, y) {
+    if (!this.unitGroup) return null;
+    const units = this.unitGroup.getChildren ? this.unitGroup.getChildren() : [];
+    for (let i = units.length - 1; i >= 0; i -= 1) {
+      const unit = units[i];
+      if (!unit || !unit.active) continue;
+      const radius = (unit.displayWidth || unit.width || 40) / 2;
+      if (Phaser.Math.Distance.Between(x, y, unit.x, unit.y) <= radius) {
+        return unit;
+      }
+    }
+    return null;
+  }
+
+  findRespawnPointAt(x, y) {
+    if (!this.teams) return null;
+    for (const team of Object.values(this.teams)) {
+      for (let i = team.respawnPoints.length - 1; i >= 0; i -= 1) {
+        const point = team.respawnPoints[i];
+        if (!point || point.destroyed) continue;
+        const radius = (point.size || 100) / 2;
+        if (Phaser.Math.Distance.Between(x, y, point.x, point.y) <= radius) {
+          return point;
+        }
+      }
+    }
+    return null;
+  }
+
+  findRallyPointAt(x, y) {
+    if (!this.teams) return null;
+    for (const team of Object.values(this.teams)) {
+      for (let i = team.rallyPoints.length - 1; i >= 0; i -= 1) {
+        const point = team.rallyPoints[i];
+        if (!point || point.destroyed) continue;
+        const radius = (point.size || 100) / 2;
+        if (Phaser.Math.Distance.Between(x, y, point.x, point.y) <= radius) {
+          return point;
+        }
+      }
+    }
+    return null;
+  }
+
+  getTeamByName(name) {
+    if (!name || !this.teams) return null;
+    return Object.values(this.teams).find(team => team.name === name) || null;
+  }
+
+  removeUnit(unit) {
+    if (!unit) return;
+    if (unit.team && typeof unit.team.removeUnit === 'function') {
+      unit.team.removeUnit(unit);
+    }
+    if (this.unitGroup && this.unitGroup.contains && this.unitGroup.contains(unit)) {
+      this.unitGroup.remove(unit, false, false);
+    }
+    unit.destroy();
+  }
+
+  removeRespawnPoint(point) {
+    if (!point) return;
+    const team = this.getTeamByName(point.team);
+    if (team && Array.isArray(team.respawnPoints)) {
+      const idx = team.respawnPoints.indexOf(point);
+      if (idx > -1) {
+        team.respawnPoints.splice(idx, 1);
+      }
+    }
+    point.destroy();
+  }
+
+  removeRallyPoint(point) {
+    if (!point) return;
+    const team = this.getTeamByName(point.team);
+    if (team && Array.isArray(team.rallyPoints)) {
+      const idx = team.rallyPoints.indexOf(point);
+      if (idx > -1) {
+        team.rallyPoints.splice(idx, 1);
+      }
+    }
+    point.destroy();
   }
 
   /**
@@ -408,3 +603,6 @@ export default class BattleScene extends Phaser.Scene {
     
   }
 }
+
+
+

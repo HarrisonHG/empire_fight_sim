@@ -50,4 +50,16 @@ export default class RallyPoint extends phaser.GameObjects.Zone {
         this.text.setFontSize(8);
         scene.add.existing(this);
     }
+
+    destroy(fromScene) {
+        if (this.sprite) {
+            this.sprite.destroy();
+            this.sprite = null;
+        }
+        if (this.text) {
+            this.text.destroy();
+            this.text = null;
+        }
+        super.destroy(fromScene);
+    }
 }
