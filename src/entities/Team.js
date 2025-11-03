@@ -129,6 +129,15 @@ export class Team extends Phaser.GameObjects.Group {
         let closestPoint = null;
         let closestDistance = Infinity;
         this.rallyPoints.forEach(rallyPoint => {
+            if (!rallyPoint) {
+                return;
+            }
+            if (rallyPoint.team && rallyPoint.team !== this.name) {
+                return;
+            }
+            if (rallyPoint.destroyed) {
+                return;
+            }
             const distance = Phaser.Math.Distance.Between(x, y, rallyPoint.x, rallyPoint.y);
             if (distance < closestDistance) {
                 closestDistance = distance;

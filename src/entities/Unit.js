@@ -3,6 +3,8 @@ import { Motion, MOTIONS, Action, ACTIONS, Stance, STANCES, CONDITIONS
   } from '../systems/unitDecisionMaking.js';
 import { STATUS, LIMB_HEALTH } from '../systems/status.js';
 import { Team, TEAM_RELATIONSHIP } from './Team.js';
+import { computeSeparationVector, computeLateralAvoidance }
+  from './movement/steering.js';
 import InteractionPayload from '../systems/interaction/interactionPayload.js';
 import { InteractionResult } from '../systems/interaction/interactionResult.js';
 import { InteractionSystem } from '../systems/interaction/interactionSystem.js';
@@ -38,6 +40,8 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     this.acceleration = 800;
     this.SLOW_MOVEMENT_DISTANCE = size; // Distance at which to start slowing down
     this.CLOSE_ENOUGH = size/2
+    this.personalSpace = Math.max(10, size * 0.6);
+    this.sideStepDistance = Math.max(12, size * 0.5);
 
     // Decision making
     this.currentStance = STANCES.RELAXED; // Default stance
@@ -780,7 +784,7 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
    * @param {number} y - The target y-coordinate.
    */
   moveTo(x, y) {
-    
+
     let closeEnough = this.CLOSE_ENOUGH;
 
     // No point chasing a dead unit
@@ -812,29 +816,80 @@ export default class Unit extends Phaser.Physics.Arcade.Sprite {
     }
 
     const distance = Phaser.Math.Distance.Between(this.x, this.y, x, y);
-    if (distance < closeEnough) {
-      this.standStill();
-      this.chooseNextMotion();
-      return; 
-    }
 
     // Calculate max speed achievable
     let currentSpeed = this.moveSpeed;
     if (!this.isAlive)
       currentSpeed /= 2;
 
+    const desiredDirection = new Phaser.Math.Vector2(x - this.x, y - this.y);
+    const allUnits = this.scene?.unitGroup?.getChildren ? this.scene.unitGroup.getChildren() : [];
+    const allies = [];
+    const blockers = [];
+
+    for (const unit of allUnits) {
+      if (!unit || unit === this) continue;
+      if (unit instanceof Unit) {
+        if (!unit.isAlive) continue;
+        if (unit.body && !unit.body.enable) continue;
+      }
+      const radius = (unit.displayWidth ?? unit.width ?? this.size) / 2;
+      blockers.push({ x: unit.x, y: unit.y, radius });
+      if (unit.team === this.team) {
+        allies.push({ x: unit.x, y: unit.y, radius });
+      }
+    }
+
+    const selfInfo = { x: this.x, y: this.y, radius: this.displayWidth / 2 };
+    const separation = computeSeparationVector(selfInfo, allies, this.personalSpace);
+    const avoidance = computeLateralAvoidance(
+      selfInfo,
+      blockers,
+      { x: desiredDirection.x, y: desiredDirection.y },
+      { x, y },
+      { personalSpace: this.personalSpace, stepDistance: this.sideStepDistance }
+    );
+
+    const movementVector = new Phaser.Math.Vector2(0, 0);
+
+    if (distance >= closeEnough && desiredDirection.lengthSq() > 0) {
+      movementVector.add(desiredDirection.normalize());
+    }
+
+    const separationVector = new Phaser.Math.Vector2(separation.x, separation.y);
+    const avoidanceVector = new Phaser.Math.Vector2(avoidance.x, avoidance.y);
+
+    if (separationVector.lengthSq() > 0) {
+      movementVector.add(separationVector.scale(1.2));
+    }
+
+    if (avoidanceVector.lengthSq() > 0) {
+      movementVector.add(avoidanceVector.scale(0.9));
+    }
+
+    if (movementVector.lengthSq() === 0) {
+      this.standStill();
+      if (distance < closeEnough) {
+        this.chooseNextMotion();
+      }
+      return;
+    }
+
+    movementVector.normalize();
+
+    const targetX = this.x + movementVector.x;
+    const targetY = this.y + movementVector.y;
+
     // We'll face the way we wish to move to.
-    this.turnToFace(x, y)
-    const angle = this.rotation;
+    this.turnToFace(targetX, targetY)
     this.body.setAcceleration(
-      Math.cos(angle) * this.acceleration,
-      Math.sin(angle) * this.acceleration
+      movementVector.x * this.acceleration,
+      movementVector.y * this.acceleration
     );
 
     // This belongs here (and not in the constructor) due to the constant changing
     // of speed from scene conditions
-    const direction = new Phaser.Math.Vector2(x - this.x, y - this.y).normalize();
-    this.body.setVelocity(direction.x * currentSpeed, direction.y * currentSpeed);
+    this.body.setVelocity(movementVector.x * currentSpeed, movementVector.y * currentSpeed);
 
     this.tryingToMove = true
   }
